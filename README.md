@@ -11,6 +11,3 @@
 
 模型来源：[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) · [PP-OCRv6 ONNX（Apache-2.0）](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx)。
 
-## License
-
-本仓库暂无 `LICENSE` 文件。上游 PP-OCRv6 ONNX 权重标注为 Apache-2.0，使用前请自行核对。
