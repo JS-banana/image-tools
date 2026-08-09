@@ -162,18 +162,20 @@ export async function loadAssets(
     });
   };
 
-  for (const [key, file] of entries) {
-    const label = `下载 ${key}`;
-    const result = await loadOne(file, revision, (loaded, fromCache) => {
-      loadedPerKey[key] = loaded;
-      report(fromCache ? "读取本机缓存" : label, fromCache);
-    });
-    loadedPerKey[key] = file.sizeBytes;
-    out[key] = result.buffer;
-    if (result.fromCache) cacheHits++;
-    else networkGets++;
-    report(result.fromCache ? "读取本机缓存" : label, result.fromCache);
-  }
+  await Promise.all(
+    entries.map(async ([key, file]) => {
+      const label = `下载 ${key}`;
+      const result = await loadOne(file, revision, (loaded, fromCache) => {
+        loadedPerKey[key] = loaded;
+        report(fromCache ? "读取本机缓存" : label, fromCache);
+      });
+      loadedPerKey[key] = file.sizeBytes;
+      out[key] = result.buffer;
+      if (result.fromCache) cacheHits++;
+      else networkGets++;
+      report(result.fromCache ? "读取本机缓存" : label, result.fromCache);
+    }),
+  );
 
   let source: "cache" | "network" | "mixed";
   if (networkGets === 0) source = "cache";
