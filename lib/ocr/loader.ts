@@ -48,7 +48,7 @@ async function fetchNetwork(
     }
   }
 
-  const url = withBasePath(file.url);
+  const url = withBasePath(key);
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}: ${url}`);
 
