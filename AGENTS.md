@@ -35,6 +35,8 @@
 - **wasm 线程**：`ort.env.wasm.numThreads = 1`，避免依赖 COOP/COEP；`wasmPaths = "/ort/"`。
 - **桌面 UI 边界**：`globals.css` 设 `body { min-width: 1180px }`，不写移动端/触控规则；配色在 `@theme`（琥珀 `#f0a23a` 只用于选中/关键按钮/进度，小号文字用 `accent-ink`）。模型卡用 `radiogroup/radio` + 方向键（roving tabindex），模型与运行状态走 `aria-live="polite"`。
 - **画布生命周期**：`ocr-client.tsx` 上传/粘贴后把原始 ImageData 存 ref，工作区 canvas 由 effect 按 `imageVersion` 重绘；标注框叠加在 canvas 上，切换模型或换图时回画原始 ImageData。`重新识别` 复用 ref 中的 ImageData，不重复解码。
+- **自建部署（主站）**：生产域 `https://ocr.laifuyou.com`；SSH Host 别名 `claw`；站点根 `/srv/ocr-app/current` → `releases/<sha>-<stamp>[-label]` 原子切换。本地 `pnpm build`（**勿**设 `BASE_PATH`），`rsync` `out/` 到新 release（可 `--exclude models/`，模型从上一版 `cp -a`），再 `ln -sfn` 切 `current`。nginx + Cloudflare 已接入；改缓存头/站点配置仍属 Ask First。
+- **GitHub Pages（备用）**：`.github/workflows/deploy-pages.yml` 仅打包 Tiny，且 `BASE_PATH=/ocr-app`；与自建三档全量、根路径部署不是同一条线，勿混用构建参数。
 
 ## Boundaries
 
@@ -61,7 +63,8 @@
 
 - 前端逻辑：`pnpm lint`；触及类型时再 `pnpm exec tsc --noEmit`；manifest/runtime 行为跑 `pnpm test`。
 - 流水线回归：有模型时跑 `python3 scripts/verify_pipeline.py --model <id>`（三档各跑一次，Tiny 加 `--baseline`）；浏览器路径用 `pnpm dev` 加载清单并实测识别。
-- 发布前：`pnpm build`，确认 `out/` 含页面与 `/ort`、`/models.json`（`public/models/<id>/` 下各档权重与字典需另行放到服务器）。
+- 发布前：`pnpm build`（自建勿带 `BASE_PATH`），确认 `out/` 含页面与 `/ort`、`/models.json`；权重在 `public/models/<id>/`，上线时可复用服务器上一 release 的 `models/`，勿默认全量重传。
+- 自建上线后：打开 `https://ocr.laifuyou.com` 确认页面；`ssh claw` 核对 `current` symlink；`curl` `/models.json` 与任一档 `det.onnx` 可达。
 - 若某检查无法运行，在回复里写明命令与原因。
 
 ## Reference Map
