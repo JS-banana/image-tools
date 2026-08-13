@@ -33,7 +33,8 @@
 - **字符集维数**：Tiny dict 6904 字 → `[''] + chars + [' ']` → `dictSize` 6906；Small/Medium 各档 `dict.json` 内容相同（18708 字 → 18710）。错字典会整页乱码；升级模型时用 `extract_charset.py`，勿拿外部 6622 字典凑合。
 - **解码防 NaN**：识别 softmax/`Math.exp` 路径必须 `isFinite` 过滤，否则单点 NaN 会整行污染（见 `lib/ocr/pipelines/ppocr-dbnet-ctc.ts`）。
 - **wasm 线程**：`ort.env.wasm.numThreads = 1`，避免依赖 COOP/COEP；`wasmPaths = "/ort/"`。
-- **桌面 UI 边界**：`globals.css` 设 `body { min-width: 1180px }`，不写移动端/触控规则；配色在 `@theme`（琥珀 `#f0a23a` 只用于选中/关键按钮/进度，小号文字用 `accent-ink`）。模型卡用 `radiogroup/radio` + 方向键（roving tabindex），模型与运行状态走 `aria-live="polite"`。
+- **响应式边界**：桌面为主但已全面适配移动端，断点统一用 `lg`（1024px）——窄屏整页滚动 + 单列堆叠，`lg` 及以上才锁 `h-dvh`、开三栏 grid 与栏内滚动。触控目标 44px（`min-h-11 lg:min-h-0`），仅桌面可用的提示用 `[@media(hover:none)]:hidden` 隐藏。勿再引入 `body { min-width }` 之类的桌面宽度下限。配色在 `@theme`（琥珀 `#f0a23a` 只用于选中/关键按钮/进度，小号文字用 `accent-ink`）。模型卡用 `radiogroup/radio` + 方向键（roving tabindex），模型与运行状态走 `aria-live="polite"`。
+- **SEO 与 SSR 边界**：`app/page.tsx` 必须保持服务端组件；`ssr: false` 只包在 `components/ocr-shell.tsx` 里，该边界内的内容（含 `children` 插槽）不会进静态 HTML。所有需要被抓取的文案放 `components/site-content.tsx`（服务端组件）。站点常量、FAQ 与使用步骤集中在 `lib/site.ts`，`layout.tsx` 的 JSON-LD 与页面可见文本共用同一份 FAQ——结构化数据要求两者一致，勿各写一份。`robots.ts`/`sitemap.ts` 在 `output: "export"` 下构建期生成，两者都须带 `export const dynamic = "force-static"`，否则构建直接失败；改域名只改 `lib/site.ts`。OG 图是静态的 `app/opengraph-image.png`（配 `.alt.txt`）：用 `opengraph-image.tsx` 生成会输出成无扩展名的 `out/opengraph-image`，nginx 按 `application/octet-stream` 送出，抓取器不认；静态文件同时避开了 satori 在无中文字体的构建机上出豆腐块。域名或文案变了需重做这张图。工作态由 `ocr-client.tsx` 写 `html[data-ocr]`，`globals.css` 据此隐藏介绍区，默认必须可见。
 - **画布生命周期**：`ocr-client.tsx` 上传/粘贴后把原始 ImageData 存 ref，工作区 canvas 由 effect 按 `imageVersion` 重绘；标注框叠加在 canvas 上，切换模型或换图时回画原始 ImageData。`重新识别` 复用 ref 中的 ImageData，不重复解码。
 - **自建部署（主站）**：生产域 `https://ocr.laifuyou.com`；SSH Host 别名 `claw`；站点根 `/srv/ocr-app/current` → `releases/<sha>-<stamp>[-label]` 原子切换。本地 `pnpm build`（**勿**设 `BASE_PATH`），`rsync` `out/` 到新 release（可 `--exclude models/`，模型从上一版 `cp -a`），再 `ln -sfn` 切 `current`。nginx + Cloudflare 已接入；改缓存头/站点配置仍属 Ask First。
 - **GitHub Pages（备用）**：`.github/workflows/deploy-pages.yml` 仅打包 Tiny，且 `BASE_PATH=/ocr-app`；与自建三档全量、根路径部署不是同一条线，勿混用构建参数。
@@ -62,6 +63,7 @@
 ## Verification
 
 - 前端逻辑：`pnpm lint`；触及类型时再 `pnpm exec tsc --noEmit`；manifest/runtime 行为跑 `pnpm test`。
+- 触及 SEO 或首页结构：`pnpm build` 后确认 `out/index.html` 里能直接搜到 h1 与 FAQ 正文（不是只有「加载中…」），且 `out/` 含 `robots.txt`、`sitemap.xml`、`opengraph-image*.png`。响应式改动在 375 / 768 / 1440 三档视口实测。
 - 流水线回归：有模型时跑 `python3 scripts/verify_pipeline.py --model <id>`（三档各跑一次，Tiny 加 `--baseline`）；浏览器路径用 `pnpm dev` 加载清单并实测识别。
 - 发布前：`pnpm build`（自建勿带 `BASE_PATH`），确认 `out/` 含页面与 `/ort`、`/models.json`；权重在 `public/models/<id>/`，上线时可复用服务器上一 release 的 `models/`，勿默认全量重传。
 - 自建上线后：打开 `https://ocr.laifuyou.com` 确认页面；`ssh claw` 核对 `current` symlink；`curl` `/models.json` 与任一档 `det.onnx` 可达。

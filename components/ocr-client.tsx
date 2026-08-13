@@ -23,8 +23,7 @@ import {
   type ModelState,
 } from "@/lib/ocr/runtime";
 import type { ModelSummary, OcrLine, OcrRunResult } from "@/lib/ocr/types";
-
-const GITHUB_REPO_URL = "https://github.com/JS-banana/ocr-app";
+import { GITHUB_REPO_URL } from "@/lib/site";
 
 type StatusKind = "" | "ok" | "loading";
 
@@ -80,10 +79,11 @@ function cardText(s: ModelState): CardStatus {
 // 标注框调色板：画布上的框与结果行按序号一一同色
 const BOX_COLORS = ["#2f7de1", "#2f9e63", "#e8912d", "#8b5cf6"];
 
+// 窄屏下抬到 44px 触控目标，桌面维持原有紧凑高度
 const primaryBtn =
-  "rounded-[8px] bg-accent px-4 py-2.5 text-[13px] font-medium text-[#171717] transition-[opacity,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink enabled:[@media(hover:hover)]:hover:opacity-90 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-11 rounded-[8px] bg-accent px-4 py-2.5 text-[13px] font-medium text-[#171717] transition-[opacity,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink enabled:[@media(hover:hover)]:hover:opacity-90 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-0";
 const secondaryBtn =
-  "rounded-[8px] border border-border bg-panel px-4 py-2.5 text-[13px] font-medium text-text transition-[border-color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink enabled:[@media(hover:hover)]:hover:border-accent/70 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-11 rounded-[8px] border border-border bg-panel px-4 py-2.5 text-[13px] font-medium text-text transition-[border-color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink enabled:[@media(hover:hover)]:hover:border-accent/70 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-0";
 
 export default function OcrClient() {
   // ===== 状态 =====
@@ -334,6 +334,16 @@ export default function OcrClient() {
     canvas.getContext("2d")!.putImageData(img, 0, 0);
   }, [hasImage, imageVersion]);
 
+  // 工作态标记：首页介绍内容区由 globals.css 按此属性隐藏。
+  // 默认（含无 JS）不设属性，静态 HTML 里的内容对抓取器始终可见。
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.ocr = hasImage ? "working" : "idle";
+    return () => {
+      delete root.dataset.ocr;
+    };
+  }, [hasImage]);
+
   // 全局粘贴：只处理剪贴板中的图片；焦点在文本控件时不拦截正常粘贴
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -526,8 +536,13 @@ export default function OcrClient() {
         : `使用 ${currentModel?.label ?? ""} 识别`;
 
   // ===== 渲染 =====
+  // 桌面工作态锁定视口高度、各栏内滚动；窄屏改为整页滚动的堆叠布局
   return (
-    <div className={`flex flex-col ${hasImage ? "h-dvh overflow-hidden" : "min-h-dvh"}`}>
+    <div
+      className={`flex flex-col ${
+        hasImage ? "lg:h-dvh lg:overflow-hidden" : "min-h-dvh"
+      }`}
+    >
       {/* ===== 顶部栏 ===== */}
       <header className="shrink-0 border-b border-border bg-panel">
         <div className="mx-auto flex h-12 w-full max-w-[1600px] items-center justify-between px-4">
@@ -575,8 +590,11 @@ export default function OcrClient() {
       {!hasImage ? (
         /* ===== 初始上传状态 ===== */
         <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4">
-          <section className="pb-10 pt-20 text-center">
-            <h1 className="text-[32px] font-semibold tracking-tight">图片文字识别</h1>
+          <section className="pb-8 pt-12 text-center sm:pb-10 sm:pt-20">
+            {/* h1 由 site-content.tsx 承担（此处在 ssr:false 边界内，不进静态 HTML） */}
+            <h2 className="text-[26px] font-semibold tracking-tight sm:text-[32px]">
+              图片文字识别
+            </h2>
             <p className="mt-3 text-[15px] text-muted">
               粘贴、拖入或选择图片，识别过程完全在本机完成。
             </p>
@@ -595,7 +613,7 @@ export default function OcrClient() {
                 }
               }}
               {...dropHandlers}
-              className={`flex min-h-[320px] cursor-pointer items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-[border-color,background-color] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink ${
+              className={`flex min-h-[220px] cursor-pointer items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-[border-color,background-color] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink sm:min-h-[320px] ${
                 dragOver
                   ? "border-accent bg-accent/[0.05]"
                   : "border-border bg-panel [@media(hover:hover)]:hover:border-accent/70"
@@ -619,7 +637,12 @@ export default function OcrClient() {
                   <path d="m21 15.5-4.8-4.8L7 20" />
                 </svg>
                 <p className="text-[14px] text-text">
-                  拖入图片、点击选择，或直接 <span className="font-mono">Ctrl/⌘V</span> 粘贴
+                  <span className="[@media(hover:none)]:hidden">
+                    拖入图片、点击选择，或直接 <span className="font-mono">Ctrl/⌘V</span> 粘贴
+                  </span>
+                  <span className="hidden [@media(hover:none)]:inline">
+                    点按选择图片，或从相册、相机导入
+                  </span>
                 </p>
                 <p className="font-mono text-[11px] text-muted">PNG / JPG / WebP</p>
               </div>
@@ -681,24 +704,28 @@ export default function OcrClient() {
         </main>
       ) : (
         /* ===== 识别工作区（固定视口高度，三栏内滚动） ===== */
-        <main className="mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_320px] grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden p-4">
+        <main className="mx-auto grid w-full max-w-[1600px] flex-1 grid-cols-1 gap-3 p-3 sm:gap-4 sm:p-4 lg:min-h-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_320px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
           {/* 左栏：原图与标注框 */}
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-panel">
+          <section className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-panel lg:min-h-0">
             <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
               <h2 className="text-[13px] font-semibold tracking-tight">原图</h2>
-              <span className={`text-[11px] ${imageError ? "text-err" : "text-muted"}`}>
+              <span
+                className={`text-[11px] ${
+                  imageError ? "text-err" : "hidden text-muted lg:inline"
+                }`}
+              >
                 {imageError ?? "拖入新图片或 Ctrl/⌘V 粘贴可替换"}
               </span>
             </div>
             <div
               {...dropHandlers}
-              className={`flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4 transition-[background-color] duration-150 ${
+              className={`flex flex-1 items-center justify-center overflow-hidden p-3 transition-[background-color] duration-150 sm:p-4 lg:min-h-0 ${
                 dragOver ? "bg-accent/[0.05]" : ""
               }`}
             >
               <canvas
                 ref={canvasRef}
-                className={`max-h-full max-w-full rounded-[4px] object-contain ${
+                className={`max-h-[50vh] max-w-full rounded-[4px] object-contain lg:max-h-full ${
                   dragOver ? "opacity-40" : ""
                 }`}
               />
@@ -706,7 +733,7 @@ export default function OcrClient() {
           </section>
 
           {/* 中栏：逐行文字与置信度 */}
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-panel">
+          <section className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-panel lg:min-h-0">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
               <h2 className="text-[13px] font-semibold tracking-tight">识别结果</h2>
               {currentModel && (
@@ -732,7 +759,7 @@ export default function OcrClient() {
                 </div>
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+            <div className="max-h-[60vh] min-h-[160px] flex-1 overflow-y-auto overscroll-contain p-2 lg:max-h-none lg:min-h-0">
               {results && results.length > 0 ? (
                 results.map((r, i) => (
                   <div
@@ -794,11 +821,11 @@ export default function OcrClient() {
           </section>
 
           {/* 右栏：模型与操作 */}
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-panel">
+          <aside className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-panel lg:min-h-0">
             <div className="border-b border-border px-4 py-2.5">
               <h2 className="text-[13px] font-semibold tracking-tight">模型</h2>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 lg:min-h-0">
               <div
                 role="radiogroup"
                 aria-label="选择识别模型"
@@ -867,6 +894,11 @@ export default function OcrClient() {
                                   : ""
                               }`}
                         </div>
+                        {m.sizeMB >= 100 && (
+                          <div className="mt-1 text-[11px] text-muted lg:hidden">
+                            移动网络下载耗时长、内存占用高
+                          </div>
+                        )}
                         {prog && (
                           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-border">
                             {prog.pct === null ? (

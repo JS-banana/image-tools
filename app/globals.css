@@ -24,8 +24,12 @@ body {
   font-family:
     -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
     sans-serif;
-  /* 桌面边界（方案 6.2）：不支持移动布局，低于此宽度横向滚动 */
-  min-width: 1180px;
+}
+
+/* 上传图片后进入工作态：介绍内容让位给工作区。
+   默认（idle / 无 JS）保持可见，静态 HTML 里的内容对抓取器始终存在。 */
+html[data-ocr="working"] #site-content {
+  display: none;
 }
 
 ::selection {
