@@ -17,6 +17,8 @@ scripts/README_rec.md
 # Agent 配置与本地工具
 .agents/
 .claude/
+AGENTS.md
+CLAUDE.md
 skills-lock.json
 
 # 研究文档（本地参考资料）
