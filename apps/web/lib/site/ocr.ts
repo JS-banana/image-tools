@@ -1,27 +1,14 @@
-// 站点级常量与首页可见文案。FAQ 同时供页面渲染与 JSON-LD 使用：
+// OCR 工具的文案与 SEO 配置。FAQ 同时供 /ocr 页面渲染与 JSON-LD 使用：
 // 结构化数据要求 FAQPage 的问答必须在页面上可见，两处必须同源。
+import type { FaqItem, HowToStep } from "./index";
 
-/** 生产域名；子路径部署（GitHub Pages）时由 NEXT_PUBLIC_SITE_URL 覆盖 */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://ocr.laifuyou.com")
-  .trim()
-  .replace(/\/$/, "");
+export const OCR_PATH = "/ocr";
 
-/** GitHub Pages 备用线：与主站内容重复，不参与索引 */
-export const IS_SUBPATH_BUILD = Boolean(process.env.BASE_PATH);
+/** 沿用迁移前标题（absolute，不拼站点后缀），保持搜索展现连续 */
+export const OCR_TITLE = "在线 OCR 图片文字识别 - 100% 浏览器本地运行，图片不上传";
 
-export const SITE_NAME = "本地 OCR";
-
-export const SITE_TITLE = "在线 OCR 图片文字识别 - 100% 浏览器本地运行，图片不上传";
-
-export const SITE_DESCRIPTION =
+export const OCR_DESCRIPTION =
   "免费的在线 OCR 图片转文字工具。基于 PP-OCRv6 与 onnxruntime-web，识别全过程在你自己的浏览器中完成，图片不会上传到任何服务器。支持中英文、拖拽与截图粘贴，可复制全文或导出 txt。";
-
-export const GITHUB_REPO_URL = "https://github.com/JS-banana/ocr-app";
-
-export interface FaqItem {
-  q: string;
-  a: string;
-}
 
 export const FAQ: FaqItem[] = [
   {
@@ -57,11 +44,6 @@ export const FAQ: FaqItem[] = [
     a: "优先保证原图清晰、文字不倾斜、对比度足够。手写体、艺术字、过度压缩的截图和低分辨率图片识别率会明显下降，可以换用更高精度的模型档位再试一次。",
   },
 ];
-
-export interface HowToStep {
-  title: string;
-  detail: string;
-}
 
 export const HOW_TO_STEPS: HowToStep[] = [
   {

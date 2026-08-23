@@ -3,6 +3,7 @@
 // 桌面产品界面：初始上传页 →（上传图片后）三栏工作区（原图标注 / 逐行结果 / 模型与操作）
 // 全部推理在浏览器本地完成；OcrRuntime 是模型生命周期唯一所有者（Promise 去重、
 // stale 清理、Tiny/Small 常驻、Medium 独占、busy 收口），UI 不直接持有 Pipeline。
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -549,7 +550,11 @@ export default function OcrClient() {
       {/* ===== 顶部栏 ===== */}
       <header className="shrink-0 border-b border-border bg-panel">
         <div className="mx-auto flex h-12 w-full max-w-[1600px] items-center justify-between px-4">
-          <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            aria-label="返回图片工具箱首页"
+            className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          >
             <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden="true">
               <g
                 stroke="currentColor"
@@ -568,7 +573,7 @@ export default function OcrClient() {
               </g>
             </svg>
             <span className="text-[15px] font-semibold tracking-tight">OCR</span>
-          </div>
+          </Link>
           <a
             href={GITHUB_REPO_URL}
             target="_blank"

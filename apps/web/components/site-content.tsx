@@ -2,7 +2,8 @@
 // 否则不会进入静态导出的 HTML，抓取器与分享卡片只能看到空页面。
 // 上传图片进入工作态后由 globals.css 的 html[data-ocr="working"] 规则隐藏。
 import catalog from "@/public/models.json";
-import { FAQ, GITHUB_REPO_URL, HOW_TO_STEPS } from "@/lib/site";
+import { GITHUB_REPO_URL } from "@/lib/site";
+import { FAQ, HOW_TO_STEPS } from "@/lib/site/ocr";
 
 /** 档位说明属于产品文案，清单里没有；按 id 取，未知模型回落到空串 */
 const MODEL_NOTES: Record<string, string> = {

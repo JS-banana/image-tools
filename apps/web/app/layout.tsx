@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import {
-  FAQ,
   GITHUB_REPO_URL,
   IS_SUBPATH_BUILD,
   SITE_DESCRIPTION,
@@ -38,40 +37,17 @@ export const metadata: Metadata = {
   },
 };
 
-/** FAQPage 的问答必须与页面可见文本一致，两处共用 lib/site.ts 的 FAQ */
+/** 站点级 JSON-LD；工具的 WebApplication/FAQPage 在各自路由页面内（与可见文案同源） */
 const jsonLd = {
   "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "WebApplication",
-      "@id": `${SITE_URL}/#app`,
-      name: SITE_NAME,
-      url: `${SITE_URL}/`,
-      description: SITE_DESCRIPTION,
-      applicationCategory: "UtilityApplication",
-      operatingSystem: "Web",
-      browserRequirements: "需要支持 WebAssembly 的现代浏览器",
-      inLanguage: "zh-CN",
-      isAccessibleForFree: true,
-      offers: { "@type": "Offer", price: "0", priceCurrency: "CNY" },
-      featureList: [
-        "浏览器本地推理，图片不上传",
-        "中英文混排识别",
-        "拖拽、选择文件或粘贴截图",
-        "复制全文或导出 txt",
-      ],
-      softwareHelp: GITHUB_REPO_URL,
-    },
-    {
-      "@type": "FAQPage",
-      "@id": `${SITE_URL}/#faq`,
-      mainEntity: FAQ.map((item) => ({
-        "@type": "Question",
-        name: item.q,
-        acceptedAnswer: { "@type": "Answer", text: item.a },
-      })),
-    },
-  ],
+  "@type": "WebSite",
+  "@id": `${SITE_URL}/#website`,
+  name: SITE_NAME,
+  url: `${SITE_URL}/`,
+  description: SITE_DESCRIPTION,
+  inLanguage: "zh-CN",
+  isAccessibleForFree: true,
+  sameAs: [GITHUB_REPO_URL],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
