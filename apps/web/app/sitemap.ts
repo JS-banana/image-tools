@@ -6,17 +6,11 @@ import { ENABLED_TOOLS } from "@/lib/site/tools";
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [
-    {
-      url: `${SITE_URL}/`,
-      changeFrequency: "monthly",
-      priority: 1,
-    },
-    // 只收录实际可用（未被 NEXT_PUBLIC_TOOLS 门控掉）的工具路由
-    ...ENABLED_TOOLS.filter((t) => t.status === "available").map((t) => ({
-      url: `${SITE_URL}${t.href}`,
-      changeFrequency: "monthly" as const,
-      priority: 0.9,
-    })),
-  ];
+  // 只收录实际可用（未被 NEXT_PUBLIC_TOOLS 门控掉）的工具路由；
+  // / 当前重定向到 /ocr，不作为独立 URL 收录
+  return ENABLED_TOOLS.filter((t) => t.status === "available").map((t) => ({
+    url: `${SITE_URL}${t.href}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.9,
+  }));
 }

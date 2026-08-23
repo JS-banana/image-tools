@@ -17,7 +17,7 @@
 
 pnpm workspaces + Turborepo monorepo：
 
-- `apps/web/` — 唯一的 Next.js 应用（静态导出，`/` 工具导航 + `/ocr` 等工具路由）
+- `apps/web/` — 唯一的 Next.js 应用（静态导出；`/` 暂重定向到 `/ocr`，后续按统一站点多路由扩展）
 - `packages/model-runtime/` — 模型清单校验、CacheStorage 资产加载、Session 生命周期（纯逻辑，Node 可测）
 - `packages/ocr/` — PP-OCR DBNet+CTC pipeline（唯一直接依赖 onnxruntime-web 的包）
 - `scripts/` — 模型下载、字符集提取、Python 端到端对照、OG 图生成
