@@ -2,9 +2,8 @@
 // 状态机：unloaded → loading(Promise 去重) → ready(Pipeline)；failed 保留错误供重试。
 // selection generation 决定最后一次选择；Session 创建/释放经 transition lock 串行化，
 // 进入与离开临界区双重检查，保证 Medium 独占与 stale 立即 dispose。
-// Node 可导入：模块无相对路径值导入。loadAssets 由组合根（UI/测试）显式注入；
-// createPipeline 缺省时经动态 import 触达当前唯一 PP-OCR factory（仅浏览器执行），
-// 测试注入替身后不会 import onnxruntime-web。
+// Node 可导入：模块无相对路径值导入。loadAssets/createPipeline 均由组合根（UI/测试）
+// 显式注入，本包不触达 onnxruntime-web。
 import type {
   AssetFile,
   ModelLoadProgress,
@@ -67,8 +66,8 @@ export interface OcrRuntimeOptions {
   catalog: ValidatedModelCatalog;
   /** 纯字节 loader（浏览器为真实 Cache API loader；测试注入替身） */
   loadAssets: LoadAssetsFn;
-  /** 缺省动态 import 当前唯一 PP-OCR factory；测试注入替身 */
-  createPipeline?: CreatePipelineFn;
+  /** 组合根注入的 Pipeline factory（浏览器为 @img/ocr 的 createPpocrPipeline；测试注入替身） */
+  createPipeline: CreatePipelineFn;
   /** 独占运行内存的模型 id；默认在 catalog 含 ppocrv6-medium 时启用，缺席则空（如 Pages Tiny-only） */
   exclusiveIds?: ReadonlySet<string>;
   onState?: (id: string, state: ModelState) => void;
@@ -85,12 +84,6 @@ interface Slot {
   /** 进行中的共享加载 Promise（去重）；null 表示无在途加载 */
   load: Promise<OcrPipeline> | null;
 }
-
-/** 默认 factory：仅在浏览器真实创建 Session 时才动态触达 onnxruntime-web */
-const defaultCreatePipeline: CreatePipelineFn = async (entry, files) => {
-  const mod = await import("./pipelines/ppocr-dbnet-ctc");
-  return mod.createPpocrPipeline(entry, files);
-};
 
 function readableError(e: unknown): string {
   if (e instanceof Error) return e.message;
@@ -148,7 +141,7 @@ export class OcrRuntime {
       }
     }
     this.loadAssetsFn = opts.loadAssets;
-    this.createPipelineFn = opts.createPipeline ?? defaultCreatePipeline;
+    this.createPipelineFn = opts.createPipeline;
     this.onState = opts.onState;
     this.onLoadProgress = opts.onLoadProgress;
   }

@@ -10,19 +10,21 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { loadAssets, pruneAssetCache } from "@/lib/ocr/loader";
 import {
+  loadAssets,
+  pruneAssetCache,
   catalogCacheKeys,
   loadModelCatalog,
   toModelSummary,
-} from "@/lib/ocr/manifest";
-import {
   OcrRuntime,
   RuntimeBusyError,
   StaleSelectionError,
   type ModelState,
-} from "@/lib/ocr/runtime";
-import type { ModelSummary, OcrLine, OcrRunResult } from "@/lib/ocr/types";
+  type ModelSummary,
+  type OcrLine,
+  type OcrRunResult,
+} from "@img/model-runtime";
+import { createPpocrPipeline } from "@img/ocr";
 import { GITHUB_REPO_URL } from "@/lib/site";
 
 type StatusKind = "" | "ok" | "loading";
@@ -218,6 +220,7 @@ export default function OcrClient() {
         const rt = new OcrRuntime({
           catalog,
           loadAssets,
+          createPipeline: createPpocrPipeline,
           onState: (id, s) => {
             // 每次进入 ready 恰对应一次 Session 创建（复用常驻不产生事件）
             if (debug && s.phase === "ready") {

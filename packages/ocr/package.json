@@ -1,0 +1,21 @@
+{
+  "name": "@img/ocr",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@img/model-runtime": "workspace:*",
+    "onnxruntime-web": "^1.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.9.3"
+  }
+}

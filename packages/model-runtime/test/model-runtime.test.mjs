@@ -17,23 +17,23 @@ import {
   parseModelCatalog,
   toModelSummary,
   withBasePath,
-} from "./manifest.ts";
+} from "../src/manifest.ts";
 import {
   OcrRuntime,
   RuntimeBusyError,
   RuntimeClosedError,
   StaleSelectionError,
-} from "./runtime.ts";
+} from "../src/runtime.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "../..");
+const ROOT = join(__dirname, "../../..");
 
 const TINY = "ppocrv6-tiny";
 const SMALL = "ppocrv6-small";
 const MEDIUM = "ppocrv6-medium";
 
 function manifestFixture() {
-  return JSON.parse(readFileSync(join(ROOT, "public/models.json"), "utf8"));
+  return JSON.parse(readFileSync(join(ROOT, "apps/web/public/models.json"), "utf8"));
 }
 
 describe("withBasePath", () => {
@@ -247,7 +247,7 @@ describe("catalog revision cache keys", () => {
 describe("local asset byte sizes", () => {
   it("matches models.json sizeBytes to on-disk det/rec/dict for all models", (t) => {
     const catalog = parseModelCatalog(manifestFixture());
-    const publicRoot = join(ROOT, "public");
+    const publicRoot = join(ROOT, "apps/web/public");
     // 权重为 gitignore 的本地资产（download_models.sh 准备）；fresh clone 缺失时跳过而非报红
     const missing = catalog.models.flatMap((m) =>
       Object.values(m.files)

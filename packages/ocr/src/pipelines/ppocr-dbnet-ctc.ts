@@ -2,14 +2,14 @@
 // 只能被客户端模块引用（onnxruntime-web 的 exports 对 node 显式禁用）。
 // 全量导入：/webgpu 条件导入不含 webgl 后端，而 webgl 是 iOS/Safari 的 GPU 兜底。
 import * as ort from "onnxruntime-web";
-import { withBasePath } from "../manifest";
+import { withBasePath } from "@img/model-runtime";
 import type {
   OcrLine,
   OcrPipeline,
   OcrRunResult,
   PpocrModelEntry,
   ProgressFn,
-} from "../types";
+} from "@img/model-runtime";
 
 const DET_MEAN = [0.485, 0.456, 0.406];
 const DET_STD = [0.229, 0.224, 0.225];
