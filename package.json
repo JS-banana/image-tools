@@ -1,32 +1,18 @@
 {
-  "name": "ocr-app",
+  "name": "image-tools",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "dev": "next dev",
-    "prebuild": "cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/ort/",
-    "build": "next build",
-    "postinstall": "mkdir -p public/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/ort/",
-    "start": "pnpm dlx serve@latest out",
-    "lint": "eslint",
-    "test": "node --experimental-strip-types --test lib/ocr/ocr.test.mjs"
-  },
-  "dependencies": {
-    "next": "16.3.0",
-    "onnxruntime-web": "^1.27.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "pnpm --filter @img/web start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.0",
-    "tailwindcss": "^4",
-    "typescript": "^5.9.3"
+    "turbo": "^2.10.11"
   }
 }

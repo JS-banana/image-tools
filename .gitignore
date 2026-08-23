@@ -3,11 +3,12 @@ node_modules/
 .next/
 out/
 build/
+.turbo/
 *.tsbuildinfo
 
 # 模型与生成资产（scripts/download_models.sh 和 postinstall 可重新生成）
 models/
-public/ort/
+apps/web/public/ort/
 scripts/inference_rec.yml
 scripts/README_rec.md
 

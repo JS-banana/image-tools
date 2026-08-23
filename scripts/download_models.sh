@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 下载 PP-OCRv6 ONNX 模型（官方仓库，国内用 hf-mirror 加速）
 # macOS bash 3.2 兼容：无 associative array、无 mapfile。
-# 落盘布局：public/models/<model-id>/{det,rec}.onnx（字典由 extract_charset.py 生成）
+# 落盘布局：apps/web/public/models/<model-id>/{det,rec}.onnx（字典由 extract_charset.py 生成）
 #
 # 用法:
 #   bash scripts/download_models.sh --model ppocrv6-tiny
@@ -12,7 +12,7 @@ set -euo pipefail
 MIRROR="${HF_MIRROR:-https://hf-mirror.com}"
 BASE="$MIRROR/PaddlePaddle"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/public/models"
+OUT="$ROOT/apps/web/public/models"
 
 MODEL=""
 while [ $# -gt 0 ]; do

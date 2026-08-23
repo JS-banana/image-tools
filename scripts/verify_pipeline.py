@@ -18,7 +18,7 @@ import onnxruntime as ort
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST_PATH = ROOT / "public" / "models.json"
+MANIFEST_PATH = ROOT / "apps" / "web" / "public" / "models.json"
 
 DET_MEAN = [0.485, 0.456, 0.406]
 DET_STD = [0.229, 0.224, 0.225]
@@ -98,7 +98,7 @@ def resolve_asset(url: str) -> Path:
     if url.startswith("http://") or url.startswith("https://"):
         raise SystemExit(f"对照脚本不支持外部 URL: {url}")
     rel = url[1:] if url.startswith("/") else url
-    path = ROOT / "public" / rel
+    path = ROOT / "apps" / "web" / "public" / rel
     if not path.exists():
         raise SystemExit(f"缺少资产: {path}")
     return path

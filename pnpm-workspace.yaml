@@ -1,3 +1,6 @@
-# Single-package app; this file also holds pnpm 11+ project settings.
+# Monorepo：apps/* 为可部署应用，packages/* 为共享包；同时存放 pnpm 11+ 项目设置。
+packages:
+  - "apps/*"
+  - "packages/*"
 allowBuilds:
   protobufjs: false

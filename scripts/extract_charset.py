@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """从 PP-OCRv6 官方 inference.yml 提取字符集。
 
-落盘：public/models/<model-id>/dict.json
+落盘：apps/web/public/models/<model-id>/dict.json
 Small 写出后同步拷贝到 Medium（内容相同，各档自包含）。
 Medium 为校验模式：与 Small 字典及官方 yml 严格一致。
 
@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-MODELS = ROOT / "public" / "models"
+MODELS = ROOT / "apps" / "web" / "public" / "models"
 
 MODEL_CFG = {
     "ppocrv6-tiny": {
