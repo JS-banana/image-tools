@@ -5,6 +5,8 @@ out/
 build/
 .turbo/
 *.tsbuildinfo
+# Next 16 typegen 自动生成，dev/build 写入路径不同导致反复变动
+next-env.d.ts
 
 # 模型与生成资产（scripts/download_models.sh 和 postinstall 可重新生成）
 models/
