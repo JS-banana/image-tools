@@ -44,11 +44,11 @@ describe("withBasePath", () => {
 
   it("prefixes site-root paths when NEXT_PUBLIC_BASE_PATH is set", () => {
     const prev = process.env.NEXT_PUBLIC_BASE_PATH;
-    process.env.NEXT_PUBLIC_BASE_PATH = "/ocr-app";
+    process.env.NEXT_PUBLIC_BASE_PATH = "/image-tools";
     try {
-      assert.equal(withBasePath("/models.json"), "/ocr-app/models.json");
-      assert.equal(withBasePath("/ort/"), "/ocr-app/ort/");
-      assert.equal(withBasePath("/ocr-app/models.json"), "/ocr-app/models.json");
+      assert.equal(withBasePath("/models.json"), "/image-tools/models.json");
+      assert.equal(withBasePath("/ort/"), "/image-tools/ort/");
+      assert.equal(withBasePath("/image-tools/models.json"), "/image-tools/models.json");
     } finally {
       if (prev === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
       else process.env.NEXT_PUBLIC_BASE_PATH = prev;

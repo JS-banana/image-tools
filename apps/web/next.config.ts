@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-/** GitHub Pages 等子路径部署时设 BASE_PATH=/ocr-app；本地开发保持空 */
+/** GitHub Pages 等子路径部署时设 BASE_PATH=/image-tools；本地开发保持空 */
 const basePath = (process.env.BASE_PATH ?? "").replace(/\/$/, "");
 
 const nextConfig: NextConfig = {

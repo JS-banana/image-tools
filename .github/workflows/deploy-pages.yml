@@ -63,7 +63,7 @@ jobs:
 
       - name: Build static site
         env:
-          BASE_PATH: /ocr-app
+          BASE_PATH: /image-tools
           # Pages 为演示镜像：只开放 OCR 入口（首页工具卡与 sitemap 据此过滤）
           NEXT_PUBLIC_TOOLS: ocr
         run: pnpm build

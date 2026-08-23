@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 /**
- * 部署子路径（如 GitHub Pages `/ocr-app`）。
+ * 部署子路径（如 GitHub Pages `/image-tools`）。
  * 由 next.config 把 BASE_PATH 注入为 NEXT_PUBLIC_BASE_PATH；本地为空。
  */
 export function appBasePath(): string {

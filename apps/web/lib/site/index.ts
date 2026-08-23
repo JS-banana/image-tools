@@ -16,7 +16,7 @@ export const SITE_TITLE = "图片工具箱 - 免费在线图片处理，100% 浏
 export const SITE_DESCRIPTION =
   "免费的在线图片工具箱：OCR 文字识别、图片压缩、背景去除……所有处理都在你自己的浏览器中完成，图片不会上传到任何服务器。无需注册、没有次数限制、不加水印。";
 
-export const GITHUB_REPO_URL = "https://github.com/JS-banana/ocr-app";
+export const GITHUB_REPO_URL = "https://github.com/JS-banana/image-tools";
 
 export interface FaqItem {
   q: string;
