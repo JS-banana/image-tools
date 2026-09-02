@@ -5,6 +5,8 @@ out/
 build/
 .turbo/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 # Next 16 typegen 自动生成，dev/build 写入路径不同导致反复变动
 next-env.d.ts
 
@@ -13,6 +15,10 @@ models/
 apps/web/public/ort/
 scripts/inference_rec.yml
 scripts/README_rec.md
+# 本地去背景校准图只作为资格实验输入，不进入版本库
+scripts/assets/remove-bg/*
+!scripts/assets/remove-bg/.gitkeep
+scripts/artifacts/remove-bg/
 
 # 环境文件
 .env*
@@ -20,6 +26,8 @@ scripts/README_rec.md
 # Agent 配置与本地工具
 .agents/
 .claude/
+.slim/deepwork/
+.ignore
 AGENTS.md
 CLAUDE.md
 skills-lock.json

@@ -3,16 +3,15 @@
 // selection generation 决定最后一次选择；Session 创建/释放经 transition lock 串行化，
 // 进入与离开临界区双重检查，保证 Medium 独占与 stale 立即 dispose。
 // Node 可导入：模块无相对路径值导入。loadAssets/createPipeline 均由组合根（UI/测试）
-// 显式注入，本包不触达 onnxruntime-web。
-import type {
-  AssetFile,
-  ModelLoadProgress,
-  OcrPipeline,
-  OcrRunResult,
-  PpocrModelEntry,
-  ProgressFn,
-  ValidatedModelCatalog,
-} from "./types";
+// 显式注入；本模块不触达 onnxruntime-web。
+import {
+  isPpocrModelEntry,
+  type AssetFile,
+  type ModelLoadProgress,
+  type PpocrModelEntry,
+  type ValidatedModelCatalog,
+} from "@img/model-runtime";
+import type { OcrPipeline, OcrRunResult, ProgressFn } from "./types.ts";
 
 export type ModelPhase = "unloaded" | "loading" | "ready" | "failed";
 
@@ -119,6 +118,7 @@ export class OcrRuntime {
 
   constructor(opts: OcrRuntimeOptions) {
     for (const entry of opts.catalog.models) {
+      if (!isPpocrModelEntry(entry)) continue;
       this.slots.set(entry.id, {
         entry,
         phase: "unloaded",

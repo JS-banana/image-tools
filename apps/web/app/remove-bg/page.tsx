@@ -1,7 +1,10 @@
-// 背景去除占位页：工具上线前提供导航落点；占位内容不收录
+// 背景去除测试版：主站渲染工作区 + 静态介绍；Pages 门控时仍返回占位页。
+// 保持 noindex；不输出 FAQ / HowTo / JSON-LD。
 import type { Metadata } from "next";
-import { TOOLS } from "@/lib/site/tools";
+import RemoveBgContent from "@/components/remove-bg-content";
+import RemoveBgShell from "@/components/remove-bg-shell";
 import { ToolPlaceholder } from "@/components/tool-placeholder";
+import { TOOLS, isToolEnabled } from "@/lib/site/tools";
 
 export const metadata: Metadata = {
   title: TOOLS.find((t) => t.id === "remove-bg")?.name ?? "背景去除",
@@ -9,5 +12,14 @@ export const metadata: Metadata = {
 };
 
 export default function RemoveBgPage() {
-  return <ToolPlaceholder toolId="remove-bg" />;
+  if (!isToolEnabled("remove-bg")) {
+    return <ToolPlaceholder toolId="remove-bg" />;
+  }
+
+  return (
+    <>
+      <RemoveBgShell />
+      <RemoveBgContent />
+    </>
+  );
 }

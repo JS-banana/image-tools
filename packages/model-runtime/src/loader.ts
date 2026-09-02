@@ -1,6 +1,6 @@
 // 通用资产加载：Cache API + revision 键 + 纯字节；不解析 dict、不理解模型结构
-import { assetCacheKey, withBasePath } from "./manifest";
-import type { AssetFile, ModelLoadProgress } from "./types";
+import { assetCacheKey, withBasePath } from "./manifest.ts";
+import type { AssetFile, ModelLoadProgress } from "./types.ts";
 
 const CACHE_NAME = "ocr-models-v1";
 
@@ -11,19 +11,6 @@ async function getCache(): Promise<Cache | null> {
   } catch (e) {
     console.warn("[loader] Cache API 不可用:", (e as Error).message);
     return null;
-  }
-}
-
-function assertSizeBytes(
-  buffer: ArrayBuffer,
-  expected: number,
-  url: string,
-  source: "cache" | "network",
-): void {
-  if (buffer.byteLength !== expected) {
-    throw new Error(
-      `资产字节数不匹配 (${source}): ${url} 实际 ${buffer.byteLength} ≠ 声明 sizeBytes ${expected}`,
-    );
   }
 }
 
@@ -52,43 +39,46 @@ async function fetchNetwork(
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}: ${url}`);
 
-  let buffer: ArrayBuffer;
+  const expected = file.sizeBytes;
+  const bytes = new Uint8Array(expected);
+  let offset = 0;
+
+  const append = (chunk: Uint8Array) => {
+    if (offset + chunk.byteLength > expected) {
+      throw new Error(
+        `资产字节溢出 (network): ${file.url} 已读 ${offset + chunk.byteLength} > 声明 sizeBytes ${expected}`,
+      );
+    }
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+    onBytes?.(offset, false);
+  };
 
   if (!resp.body) {
-    buffer = await resp.arrayBuffer();
-    onBytes?.(buffer.byteLength, false);
+    append(new Uint8Array(await resp.arrayBuffer()));
   } else {
     const reader = resp.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      chunks.push(value);
-      loaded += value.byteLength;
-      onBytes?.(loaded, false);
+      append(value);
     }
-
-    const merged = new Uint8Array(loaded);
-    let offset = 0;
-    for (const c of chunks) {
-      merged.set(c, offset);
-      offset += c.byteLength;
-    }
-    buffer = merged.buffer;
   }
 
-  // 网络错配：失败且不写入缓存
-  assertSizeBytes(buffer, file.sizeBytes, file.url, "network");
+  if (offset !== expected) {
+    throw new Error(
+      `资产字节不足 (network): ${file.url} 实际 ${offset} ≠ 声明 sizeBytes ${expected}`,
+    );
+  }
 
   if (cache) {
     try {
-      await cache.put(key, new Response(buffer.slice(0)));
+      await cache.put(key, new Response(bytes));
     } catch (e) {
       console.warn("[loader] 缓存写入失败:", (e as Error).message);
     }
   }
-  return buffer;
+  return bytes.buffer;
 }
 
 async function loadOne(
@@ -146,19 +136,20 @@ export async function loadAssets(
 
   const report = (label: string, fromCache: boolean) => {
     if (!onProgress) return;
-    if (!(totalKnown > 0)) {
-      onProgress({ pct: null, label, fromCache });
-      return;
-    }
-    let weighted = 0;
+    let loadedBytes = 0;
     for (const [k, f] of entries) {
-      const got = loadedPerKey[k] ?? 0;
-      weighted += Math.min(got, f.sizeBytes);
+      loadedBytes += Math.min(loadedPerKey[k] ?? 0, f.sizeBytes);
     }
+    const totalBytes = totalKnown;
     onProgress({
-      pct: Math.min(100, (weighted / totalKnown) * 100),
+      pct:
+        totalBytes > 0
+          ? Math.min(100, (loadedBytes / totalBytes) * 100)
+          : null,
       label,
       fromCache,
+      loadedBytes,
+      totalBytes,
     });
   };
 

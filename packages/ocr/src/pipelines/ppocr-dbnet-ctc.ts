@@ -3,13 +3,13 @@
 // 全量导入：/webgpu 条件导入不含 webgl 后端，而 webgl 是 iOS/Safari 的 GPU 兜底。
 import * as ort from "onnxruntime-web";
 import { withBasePath } from "@img/model-runtime";
+import type { PpocrModelEntry } from "@img/model-runtime";
 import type {
   OcrLine,
   OcrPipeline,
   OcrRunResult,
-  PpocrModelEntry,
   ProgressFn,
-} from "@img/model-runtime";
+} from "../types.ts";
 
 const DET_MEAN = [0.485, 0.456, 0.406];
 const DET_STD = [0.229, 0.224, 0.225];

@@ -1,0 +1,125 @@
+{
+  "licenseNote": "All selected files are marked CC0 on their Wikimedia Commons source pages. Images are downloaded only into the gitignored local validation directory.",
+  "samples": [
+    {
+      "file": "01-person-beard.jpg",
+      "sha256": "62902742a6f2b2ed9363a7b319bdb593fd477adae80f91419c9cad4ad2cd4f32",
+      "category": "person",
+      "calibration": true,
+      "challenge": "long hair and beard",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Bearded_man_with_long_hair-3052641.jpg/1920px-Bearded_man_with_long_hair-3052641.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Bearded_man_with_long_hair-3052641.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "02-person-actress.jpg",
+      "sha256": "40dd7600199e90efa2027c44b1e6410052a33f1084d98dc8f6cb48ee760f40cb",
+      "category": "person",
+      "calibration": false,
+      "challenge": "portrait edges and aged source contrast",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/b/b2/Portrait_of_actress_with_short_hair%2C_from_the_Actresses_series_%28N668%29_MET_DPB869894.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Portrait_of_actress_with_short_hair,_from_the_Actresses_series_(N668)_MET_DPB869894.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "03-pet-cat.jpeg",
+      "sha256": "fcf9d21b35f398251fc9f32e192c0f59f9358676d1129c653db419c0c8388b1b",
+      "category": "pet",
+      "calibration": true,
+      "challenge": "long fur against foliage",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Mm41a_1004_Cat_%2873466847%29.jpeg/1920px-Mm41a_1004_Cat_%2873466847%29.jpeg",
+      "source": "https://commons.wikimedia.org/wiki/File:Mm41a_1004_Cat_(73466847).jpeg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "04-pet-dog.png",
+      "sha256": "4aa56193f452123db293dae26bb934302bb65665563c7e2c93199e666a452f28",
+      "category": "pet",
+      "calibration": false,
+      "challenge": "mixed-color fur and harness",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/6/64/Mongrel_Dog_Breed.png",
+      "source": "https://commons.wikimedia.org/wiki/File:Mongrel_Dog_Breed.png",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "05-product-shoe.jpg",
+      "sha256": "6486344a9d2caf45d9a76a7300fa09214f032515b8273112e222ece147131a0f",
+      "category": "product",
+      "calibration": true,
+      "challenge": "small shadow and thin laces",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Flying_shoe_in_the_air.JPG/1920px-Flying_shoe_in_the_air.JPG",
+      "source": "https://commons.wikimedia.org/wiki/File:Flying_shoe_in_the_air.JPG",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "06-product-shoe-trees.jpg",
+      "sha256": "6555275a9be967ec2b10d55d81caa84371714523c72682c6ff0b5a05e83b1cb4",
+      "category": "product",
+      "calibration": false,
+      "challenge": "multiple overlapping wooden objects",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Shoe_trees.jpg/1920px-Shoe_trees.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Shoe_trees.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "07-plant-monstera.jpg",
+      "sha256": "d24b6e910c99c8a0857c062b32b984638790408b9cc8dd114f0c0705fc6485b2",
+      "category": "plant",
+      "calibration": true,
+      "challenge": "leaf gaps and narrow stems",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Nature_-_Natura_%2814294118049%29.jpg/1920px-Nature_-_Natura_%2814294118049%29.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Nature_-_Natura_(14294118049).jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "08-plant-houseplant.jpg",
+      "sha256": "8fcd4b5fa414e1147f4bcc2dd9d36a3074b45b47c558b22e0dc31a240dde34d2",
+      "category": "plant",
+      "calibration": false,
+      "challenge": "fine leaves against indoor background",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Nature_-_Natura_%2814821885866%29.jpg/1920px-Nature_-_Natura_%2814821885866%29.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Nature_-_Natura_(14821885866).jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "09-plant-single-flower.jpg",
+      "sha256": "f27d980e72e672144e3d21c6f04df074fb71f8fd1c2f49b7b60696360b104a41",
+      "category": "plant",
+      "calibration": false,
+      "challenge": "thin petals and stem against bokeh",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Bulbine_frutescens%2C_single_flower.jpg/1920px-Bulbine_frutescens%2C_single_flower.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Bulbine_frutescens,_single_flower.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "10-complex-bicycle-wall.jpg",
+      "sha256": "706e6826240eae96a93bb7e961599ea0114fdb646a11b278a9580d48e9b8b7dd",
+      "category": "complex-outline",
+      "calibration": false,
+      "challenge": "thin spokes against a textured wall",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/a3/Green_bicycle_leaning_on_the_wall.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Green_bicycle_leaning_on_the_wall.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "11-complex-bicycle-ice.jpg",
+      "sha256": "9b566ff470ec60df8a799e435e1feda9fc2534bb8c46d1894dfe76136664f16f",
+      "category": "complex-outline",
+      "calibration": false,
+      "challenge": "thin spokes and low-contrast ice",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Bicycle_on_Ice_Oulu_20241215.jpg/1920px-Bicycle_on_Ice_Oulu_20241215.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Bicycle_on_Ice_Oulu_20241215.jpg",
+      "license": "CC0-1.0"
+    },
+    {
+      "file": "12-product-bottle-coolers.jpg",
+      "sha256": "d8f4e03401401b812eb67cf95500f3f1e1433c7f81c90c072736cad399b27272",
+      "category": "product",
+      "calibration": false,
+      "challenge": "fur texture and overlapping cylindrical products",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Sheepskin_bottle_coolers%2C_2023.jpg/1920px-Sheepskin_bottle_coolers%2C_2023.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Sheepskin_bottle_coolers,_2023.jpg",
+      "license": "CC0-1.0"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 // 否则不会进入静态导出的 HTML，抓取器与分享卡片只能看到空页面。
 // 上传图片进入工作态后由 globals.css 的 html[data-ocr="working"] 规则隐藏。
 import catalog from "@/public/models.json";
+import { isPpocrModelEntry, parseModelCatalog } from "@img/model-runtime";
 import { GITHUB_REPO_URL } from "@/lib/site";
 import { FAQ, HOW_TO_STEPS } from "@/lib/site/ocr";
 
@@ -11,6 +12,8 @@ const MODEL_NOTES: Record<string, string> = {
   "ppocrv6-small": "字典更完整，对小字号和复杂排版更稳，桌面端日常使用的推荐档位。",
   "ppocrv6-medium": "识别效果最好，代价是权重上百 MB 与更高内存占用，建议 Wi-Fi 下的桌面浏览器使用。",
 };
+const OCR_MODELS = parseModelCatalog(catalog).models.filter(isPpocrModelEntry);
+
 
 function sizeMB(files: { det: { sizeBytes: number }; rec: { sizeBytes: number } }) {
   return Math.round((files.det.sizeBytes + files.rec.sizeBytes) / (1024 * 1024));
@@ -63,7 +66,7 @@ export default function SiteContent() {
             准确率和下载体积不可兼得，所以准备了三档权重，可以在识别过程中随时切换。下载过的模型会缓存在本机，再次使用不必重新下载。
           </p>
           <div className="mt-6 flex flex-col gap-3">
-            {catalog.models.map((m) => (
+            {OCR_MODELS.map((m) => (
               <div key={m.id} className="rounded-[10px] border border-border bg-panel p-4">
                 <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                   <h3 className="text-[14px] font-semibold tracking-tight">{m.label}</h3>
@@ -74,7 +77,7 @@ export default function SiteContent() {
                 </div>
                 <p className={`mt-1.5 ${bodyText}`}>{MODEL_NOTES[m.id] ?? ""}</p>
               </div>
-            ))}
+              ))}
           </div>
         </section>
 

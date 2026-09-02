@@ -32,6 +32,10 @@ html[data-ocr="working"] #site-content {
   display: none;
 }
 
+html[data-remove-bg="working"] #remove-bg-content {
+  display: none;
+}
+
 ::selection {
   background: color-mix(in oklab, var(--color-accent) 24%, transparent);
 }

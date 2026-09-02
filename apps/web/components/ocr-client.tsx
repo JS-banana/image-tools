@@ -16,15 +16,19 @@ import {
   catalogCacheKeys,
   loadModelCatalog,
   toModelSummary,
+  ManifestError,
+  isPpocrModelEntry,
+  type ModelSummary,
+} from "@img/model-runtime";
+import {
+  createPpocrPipeline,
   OcrRuntime,
   RuntimeBusyError,
   StaleSelectionError,
   type ModelState,
-  type ModelSummary,
   type OcrLine,
   type OcrRunResult,
-} from "@img/model-runtime";
-import { createPpocrPipeline } from "@img/ocr";
+} from "@img/ocr";
 import { SiteHeader } from "@/components/site-header";
 
 type StatusKind = "" | "ok" | "loading";
@@ -208,6 +212,11 @@ export default function OcrClient() {
       try {
         const catalog = await loadModelCatalog();
         if (cancelled) return;
+        const ppocr = catalog.models.filter(isPpocrModelEntry);
+        if (ppocr.length === 0) {
+          throw new ManifestError("没有可用的 PP-OCR 模型", { path: "models" });
+        }
+        const ocrCatalog = { models: ppocr };
         void pruneAssetCache(catalogCacheKeys(catalog));
         // 浏览器 Gate 观测句柄：仅开发构建暴露（静态导出为 production，自动剔除）
         const debug =
@@ -218,9 +227,14 @@ export default function OcrClient() {
               })
             : null;
         const rt = new OcrRuntime({
-          catalog,
+          catalog: ocrCatalog,
           loadAssets,
           createPipeline: createPpocrPipeline,
+          exclusiveIds: new Set(
+            ppocr.some((m) => m.id === "ppocrv6-medium")
+              ? (["ppocrv6-medium"] as const)
+              : [],
+          ),
           onState: (id, s) => {
             // 每次进入 ready 恰对应一次 Session 创建（复用常驻不产生事件）
             if (debug && s.phase === "ready") {
@@ -238,7 +252,10 @@ export default function OcrClient() {
                   ? { pct: p.pct, label: "读取本机缓存…" }
                   : p.pct === null
                     ? { pct: null, label: "下载模型…" }
-                    : { pct: p.pct, label: `下载模型 ${Math.round(p.pct)}%` };
+                    : {
+                        pct: p.pct,
+                        label: `下载模型 ${Math.round(p.pct)}%`,
+                      };
             setCardProgress((prev) => ({ ...prev, [id]: prog }));
             if (id !== currentIdRef.current) return;
             setStatusKind("loading");
@@ -250,7 +267,7 @@ export default function OcrClient() {
           (window as unknown as { __ocrDebug?: typeof debug }).__ocrDebug = debug;
         }
         runtimeRef.current = rt;
-        const list = catalog.models.map(toUiModel);
+        const list = ppocr.map(toUiModel);
         setModels(list);
         const def = list.find((m) => m.recommended) || list[0];
         if (def) void selectModel(def);

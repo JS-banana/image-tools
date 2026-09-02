@@ -1,4 +1,4 @@
-// 共享类型：校验后的模型清单、公共 OCR 结果与 Pipeline 接口
+// 共享类型：校验后的模型清单联合、资产描述与通用加载进度
 
 export interface AssetFile {
   url: string;
@@ -23,7 +23,7 @@ export interface PpocrFiles {
   dict: AssetFile;
 }
 
-/** PP-OCR DBNet+CTC 清单条目（pipeline 判别联合的当前唯一成员） */
+/** PP-OCR DBNet+CTC 清单条目 */
 export interface PpocrModelEntry {
   id: string;
   name: string;
@@ -35,7 +35,28 @@ export interface PpocrModelEntry {
   params: PpocrParams;
 }
 
-export type ModelEntry = PpocrModelEntry;
+export type ModelEntry = PpocrModelEntry | Ben2RemoveBgModelEntry;
+
+/** BEN2 去背景清单条目；1024 / ImageNet mean-std / pixel_values→alphas 由 pipeline 不变量拥有 */
+export interface Ben2RemoveBgModelEntry {
+  id: string;
+  name: string;
+  label: string;
+  recommended: boolean;
+  revision: string;
+  pipeline: "ben2-background-removal";
+  files: { model: AssetFile };
+}
+
+export function isPpocrModelEntry(entry: ModelEntry): entry is PpocrModelEntry {
+  return entry.pipeline === "ppocr-dbnet-ctc";
+}
+
+export function isBen2RemoveBgModelEntry(
+  entry: ModelEntry,
+): entry is Ben2RemoveBgModelEntry {
+  return entry.pipeline === "ben2-background-removal";
+}
 
 export interface ValidatedModelCatalog {
   models: ModelEntry[];
@@ -55,35 +76,6 @@ export interface ModelLoadProgress {
   pct: number | null;
   label: string;
   fromCache: boolean;
-}
-
-export interface OcrBox {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
-export interface OcrLine {
-  box: OcrBox;
-  text: string;
-  confidence: number;
-}
-
-export interface OcrRunResult {
-  results: OcrLine[];
-  boxesFound: number;
-  detMs: number;
-  recMs: number;
-  totalMs: number;
-  backend: string;
-}
-
-export type ProgressFn = (p: { pct: number; label: string }) => void;
-
-/** 公共 Pipeline 接口：无 dictSize（PP-OCR 内容不变量仅在 factory 内校验） */
-export interface OcrPipeline {
-  readonly backend: string;
-  run(image: ImageData, onProgress?: ProgressFn): Promise<OcrRunResult>;
-  dispose(): Promise<void>;
+  loadedBytes: number;
+  totalBytes: number;
 }
