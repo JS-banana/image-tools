@@ -98,6 +98,20 @@
         "unclipRatio": 1.4,
         "minBoxSide": 3
       }
+    },
+    {
+      "id": "ben2-base-fp16",
+      "name": "BEN2 Base FP16",
+      "label": "通用",
+      "recommended": true,
+      "revision": "dfdc25f421f",
+      "pipeline": "ben2-background-removal",
+      "files": {
+        "model": {
+          "url": "/models/ben2-base/model.onnx",
+          "sizeBytes": 219121675
+        }
+      }
     }
   ]
 }

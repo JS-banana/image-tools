@@ -10,11 +10,13 @@
     "postinstall": "mkdir -p public/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/ort/",
     "start": "pnpm dlx serve@latest out",
     "lint": "eslint",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test test/*.test.mjs",
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@img/model-runtime": "workspace:*",
     "@img/ocr": "workspace:*",
+    "@img/remove-bg": "workspace:*",
     "next": "16.3.0",
     "onnxruntime-web": "^1.27.0",
     "react": "19.2.8",

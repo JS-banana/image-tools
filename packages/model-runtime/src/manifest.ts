@@ -1,13 +1,14 @@
 // Manifest/Catalog：不可信 JSON → 已校验 discriminated union（下载前失败）
 import type {
   AssetFile,
+  Ben2RemoveBgModelEntry,
   ModelEntry,
   ModelSummary,
   PpocrFiles,
   PpocrModelEntry,
   PpocrParams,
   ValidatedModelCatalog,
-} from "./types";
+} from "./types.ts";
 
 /**
  * 部署子路径（如 GitHub Pages `/image-tools`）。
@@ -270,7 +271,7 @@ function parsePpocrEntry(
   if (pipeline !== "ppocr-dbnet-ctc") {
     fail(
       `${path}.pipeline`,
-      `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc）`,
+      `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
       id,
     );
   }
@@ -288,6 +289,70 @@ function parsePpocrEntry(
   };
 }
 
+function parseBen2Files(
+  raw: unknown,
+  path: string,
+  modelId: string,
+): { model: AssetFile } {
+  if (!isPlainObject(raw)) {
+    fail(path, "必须是对象", modelId);
+  }
+  const keys = Object.keys(raw).sort();
+  if (keys.length !== 1 || keys[0] !== "model") {
+    fail(path, "必须恰好包含 model 一个键", modelId);
+  }
+  return { model: parseAssetFile(raw.model, `${path}.model`, modelId) };
+}
+
+function parseBen2RemoveBgEntry(
+  raw: Record<string, unknown>,
+  index: number,
+): Ben2RemoveBgModelEntry {
+  const path = `models[${index}]`;
+  const id = expectString(raw, "id", path);
+  const name = expectString(raw, "name", path, id);
+  const label = expectString(raw, "label", path, id);
+  const revision = expectString(raw, "revision", path, id);
+  const recommended = expectBoolean(raw, "recommended", path, id);
+  const pipeline = expectString(raw, "pipeline", path, id);
+  if (pipeline !== "ben2-background-removal") {
+    fail(
+      `${path}.pipeline`,
+      `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
+      id,
+    );
+  }
+  const files = parseBen2Files(raw.files, `${path}.files`, id);
+  return {
+    id,
+    name,
+    label,
+    recommended,
+    revision,
+    pipeline: "ben2-background-removal",
+    files,
+  };
+}
+
+function parseModelEntry(
+  raw: Record<string, unknown>,
+  index: number,
+): ModelEntry {
+  const path = `models[${index}]`;
+  const idHint =
+    typeof raw.id === "string" && raw.id.trim() !== "" ? raw.id : null;
+  const pipeline = expectString(raw, "pipeline", path, idHint);
+  if (pipeline === "ppocr-dbnet-ctc") return parsePpocrEntry(raw, index);
+  if (pipeline === "ben2-background-removal") {
+    return parseBen2RemoveBgEntry(raw, index);
+  }
+  fail(
+    `${path}.pipeline`,
+    `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
+    idHint,
+  );
+}
+
 /** 解析并完整校验 catalog；任何结构/参数错误在此抛出（早于资产下载） */
 export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
   if (!isPlainObject(raw)) {
@@ -302,43 +367,46 @@ export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
 
   const models: ModelEntry[] = [];
   const ids = new Set<string>();
-  let recommendedCount = 0;
+  const recommendedByPipeline = new Map<string, number>();
 
   for (let i = 0; i < raw.models.length; i++) {
     const item = raw.models[i];
     if (!isPlainObject(item)) {
       fail(`models[${i}]`, "必须是对象");
     }
-    // 未知 pipeline：先读 pipeline 字段以便给出带 id 的错误
-    if (typeof item.pipeline === "string" && item.pipeline !== "ppocr-dbnet-ctc") {
-      const id = typeof item.id === "string" ? item.id : null;
-      fail(
-        `models[${i}].pipeline`,
-        `未知 pipeline "${item.pipeline}"（当前仅支持 ppocr-dbnet-ctc）`,
-        id,
-      );
-    }
-    const entry = parsePpocrEntry(item, i);
+    const entry = parseModelEntry(item, i);
     if (ids.has(entry.id)) {
       fail(`models[${i}].id`, `重复的模型 id "${entry.id}"`, entry.id);
     }
     ids.add(entry.id);
-    if (entry.recommended) recommendedCount++;
+    if (entry.recommended) {
+      recommendedByPipeline.set(
+        entry.pipeline,
+        (recommendedByPipeline.get(entry.pipeline) ?? 0) + 1,
+      );
+    }
     models.push(entry);
   }
 
-  if (recommendedCount !== 1) {
-    fail("models", `必须恰好有一个 recommended: true（当前 ${recommendedCount} 个）`);
+  const presentPipelines = new Set(models.map((m) => m.pipeline));
+  for (const pipeline of presentPipelines) {
+    const n = recommendedByPipeline.get(pipeline) ?? 0;
+    if (n !== 1) {
+      fail(
+        "models",
+        `pipeline "${pipeline}" 必须恰好有一个 recommended: true（当前 ${n} 个）`,
+      );
+    }
   }
 
   return { models };
 }
 
 export function toModelSummary(entry: ModelEntry): ModelSummary {
-  const downloadBytes =
-    entry.files.det.sizeBytes +
-    entry.files.rec.sizeBytes +
-    entry.files.dict.sizeBytes;
+  const downloadBytes = Object.values(entry.files).reduce(
+    (sum, file) => sum + file.sizeBytes,
+    0,
+  );
   return {
     id: entry.id,
     name: entry.name,

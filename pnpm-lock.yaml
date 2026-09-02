@@ -20,6 +20,9 @@ importers:
       '@img/ocr':
         specifier: workspace:*
         version: link:../../packages/ocr
+      '@img/remove-bg':
+        specifier: workspace:*
+        version: link:../../packages/remove-bg
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7(supports-color@7.1.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -68,6 +71,22 @@ importers:
         version: 5.9.3
 
   packages/ocr:
+    dependencies:
+      '@img/model-runtime':
+        specifier: workspace:*
+        version: link:../model-runtime
+      onnxruntime-web:
+        specifier: ^1.27.0
+        version: 1.27.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/remove-bg:
     dependencies:
       '@img/model-runtime':
         specifier: workspace:*
