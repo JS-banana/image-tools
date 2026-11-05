@@ -613,3 +613,23 @@ describe("RemoveBgRuntime dispose 收口", () => {
     );
   });
 });
+
+describe("RemoveBgRuntime download cancellation", () => {
+  it("dispose aborts the pending download before pipeline creation", async () => {
+    let signal;
+    let created = false;
+    const runtime = new RemoveBgRuntime({
+      entry: makeEntry(), backend: "wasm",
+      loadAssets: (_files, _revision, _progress, current) => {
+        signal = current;
+        return new Promise((_resolve, reject) => current.addEventListener("abort", () => reject(current.reason), { once: true }));
+      },
+      createPipeline: async () => { created = true; throw new Error("unexpected"); },
+    });
+    const pending = runtime.load().catch((error) => error);
+    await runtime.dispose();
+    assert.equal(signal.aborted, true);
+    assert.ok(await pending instanceof RuntimeClosedError);
+    assert.equal(created, false);
+  });
+});

@@ -1,33 +1,4 @@
-// Manifest/Catalog：不可信 JSON → 已校验 discriminated union（下载前失败）
-import type {
-  AssetFile,
-  Ben2RemoveBgModelEntry,
-  ModelEntry,
-  ModelSummary,
-  PpocrFiles,
-  PpocrModelEntry,
-  PpocrParams,
-  ValidatedModelCatalog,
-} from "./types.ts";
-
-/**
- * 部署子路径（如 GitHub Pages `/image-tools`）。
- * 由 next.config 把 BASE_PATH 注入为 NEXT_PUBLIC_BASE_PATH；本地为空。
- */
-export function appBasePath(): string {
-  return process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-}
-
-/**
- * 给站点根绝对路径加上 basePath。
- * 清单里仍保持 `/models/...` 规范；仅在实际 fetch / wasmPaths 时调用。
- */
-export function withBasePath(path: string): string {
-  const base = appBasePath();
-  if (!base || !path.startsWith("/") || path.startsWith("//")) return path;
-  if (path === base || path.startsWith(`${base}/`)) return path;
-  return `${base}${path}`;
-}
+import type { AssetFile, AssetModelEntry, ModelSummary, ValidatedModelCatalog } from "./types.ts";
 
 export class ManifestError extends Error {
   readonly modelId: string | null;
@@ -43,15 +14,15 @@ export class ManifestError extends Error {
   }
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function fail(path: string, message: string, modelId?: string | null): never {
+export function fail(path: string, message: string, modelId?: string | null): never {
   throw new ManifestError(message, { path, modelId });
 }
 
-function expectString(
+export function expectString(
   obj: Record<string, unknown>,
   key: string,
   path: string,
@@ -64,7 +35,7 @@ function expectString(
   return v;
 }
 
-function expectBoolean(
+export function expectBoolean(
   obj: Record<string, unknown>,
   key: string,
   path: string,
@@ -77,7 +48,7 @@ function expectBoolean(
   return v;
 }
 
-function expectFiniteNumber(
+export function expectFiniteNumber(
   obj: Record<string, unknown>,
   key: string,
   path: string,
@@ -100,10 +71,10 @@ function expectFiniteNumber(
   return v;
 }
 
-/** 固定同源 base：用 URL 解析拦截反斜杠/外部 origin，只允许 /models/ 规范路径 */
-const STATIC_ASSET_BASE = "https://ocr.local";
+/** 固定同源 base：用 URL 解析拦截反斜杠/外部 origin，只允许规范的站点逻辑路径 */
+const STATIC_ASSET_BASE = "https://assets.invalid";
 
-/** 本站静态资产 URL：仅接受规范 /models/… 路径，拒绝外部、query/hash、反斜杠、穿越 */
+/** 本站静态资产 URL：仅接受规范的站点逻辑路径，拒绝外部、query/hash、反斜杠、穿越 */
 function expectStaticUrl(
   url: unknown,
   path: string,
@@ -124,6 +95,11 @@ function expectStaticUrl(
   if (!url.startsWith("/")) {
     fail(path, "须以 / 开头的本站路径", modelId);
   }
+  let decoded: string;
+  try { decoded = decodeURIComponent(url); } catch { fail(path, "非法 URL 编码", modelId); }
+  if (decoded.includes("\\") || decoded.split("/").some((part, i) => i > 0 && (part === "" || part === "." || part === ".."))) {
+    fail(path, "禁止穿越、反斜杠与空路径段", modelId);
+  }
   let parsed: URL;
   try {
     parsed = new URL(url, STATIC_ASSET_BASE);
@@ -137,20 +113,17 @@ function expectStaticUrl(
     fail(path, "禁止 query 或 hash", modelId);
   }
   const pathname = parsed.pathname;
-  if (!pathname.startsWith("/models/")) {
-    fail(path, "须为本站 /models/ 下静态路径", modelId);
-  }
-  const rest = pathname.slice("/models/".length);
+  const rest = pathname.slice(1);
   if (
     !rest ||
     rest.split("/").some((s) => s === "" || s === "." || s === "..")
   ) {
-    fail(path, "须为本站 /models/ 下规范文件路径（禁止穿越与空段）", modelId);
+    fail(path, "须为本站规范文件路径（禁止穿越与空段）", modelId);
   }
   return pathname;
 }
 
-function parseAssetFile(
+export function parseAssetFile(
   raw: unknown,
   path: string,
   modelId: string,
@@ -162,199 +135,17 @@ function parseAssetFile(
   const sizeBytes = expectFiniteNumber(raw, "sizeBytes", path, modelId, {
     positive: true,
   });
-  if (!Number.isInteger(sizeBytes)) {
+  if (!Number.isSafeInteger(sizeBytes)) {
     fail(`${path}.sizeBytes`, "必须是正整数", modelId);
   }
   return { url, sizeBytes };
 }
 
-function parsePpocrFiles(
-  raw: unknown,
-  path: string,
-  modelId: string,
-): PpocrFiles {
-  if (!isPlainObject(raw)) {
-    fail(path, "必须是对象", modelId);
-  }
-  const keys = Object.keys(raw).sort();
-  const expected = ["det", "dict", "rec"];
-  if (keys.length !== 3 || keys.some((k, i) => k !== expected[i])) {
-    fail(path, "必须恰好包含 det、rec、dict 三个键", modelId);
-  }
-  return {
-    det: parseAssetFile(raw.det, `${path}.det`, modelId),
-    rec: parseAssetFile(raw.rec, `${path}.rec`, modelId),
-    dict: parseAssetFile(raw.dict, `${path}.dict`, modelId),
-  };
-}
-
-function parsePpocrParams(
-  raw: unknown,
-  path: string,
-  modelId: string,
-): PpocrParams {
-  if (!isPlainObject(raw)) {
-    fail(path, "必须是对象", modelId);
-  }
-  const colorOrder = expectString(raw, "colorOrder", path, modelId);
-  if (colorOrder !== "BGR") {
-    fail(`${path}.colorOrder`, '当前仅允许 "BGR"', modelId);
-  }
-  const detMaxSide = expectFiniteNumber(raw, "detMaxSide", path, modelId, {
-    positive: true,
-  });
-  if (!Number.isInteger(detMaxSide)) {
-    fail(`${path}.detMaxSide`, "必须是正整数", modelId);
-  }
-  const recHeight = expectFiniteNumber(raw, "recHeight", path, modelId, {
-    positive: true,
-  });
-  if (!Number.isInteger(recHeight)) {
-    fail(`${path}.recHeight`, "必须是正整数", modelId);
-  }
-  const recMaxWidth = expectFiniteNumber(raw, "recMaxWidth", path, modelId, {
-    positive: true,
-  });
-  if (!Number.isInteger(recMaxWidth)) {
-    fail(`${path}.recMaxWidth`, "必须是正整数", modelId);
-  }
-  const dictSize = expectFiniteNumber(raw, "dictSize", path, modelId, {
-    positive: true,
-  });
-  if (!Number.isInteger(dictSize) || dictSize < 3) {
-    fail(`${path}.dictSize`, "必须是 ≥ 3 的整数（blank + chars + space）", modelId);
-  }
-  const detThresh = expectFiniteNumber(raw, "detThresh", path, modelId, {
-    min: 0,
-    max: 1,
-  });
-  const boxThresh = expectFiniteNumber(raw, "boxThresh", path, modelId, {
-    min: 0,
-    max: 1,
-  });
-  const unclipRatio = expectFiniteNumber(raw, "unclipRatio", path, modelId, {
-    positive: true,
-  });
-  const minBoxSide = expectFiniteNumber(raw, "minBoxSide", path, modelId, {
-    positive: true,
-  });
-  if (!Number.isInteger(minBoxSide)) {
-    fail(`${path}.minBoxSide`, "必须是正整数", modelId);
-  }
-  if (recMaxWidth < recHeight) {
-    fail(`${path}.recMaxWidth`, "必须 ≥ recHeight", modelId);
-  }
-  return {
-    detMaxSide,
-    recHeight,
-    recMaxWidth,
-    dictSize,
-    colorOrder: "BGR",
-    detThresh,
-    boxThresh,
-    unclipRatio,
-    minBoxSide,
-  };
-}
-
-function parsePpocrEntry(
-  raw: Record<string, unknown>,
-  index: number,
-): PpocrModelEntry {
-  const path = `models[${index}]`;
-  const id = expectString(raw, "id", path);
-  const name = expectString(raw, "name", path, id);
-  const label = expectString(raw, "label", path, id);
-  const revision = expectString(raw, "revision", path, id);
-  const recommended = expectBoolean(raw, "recommended", path, id);
-  const pipeline = expectString(raw, "pipeline", path, id);
-  if (pipeline !== "ppocr-dbnet-ctc") {
-    fail(
-      `${path}.pipeline`,
-      `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
-      id,
-    );
-  }
-  const files = parsePpocrFiles(raw.files, `${path}.files`, id);
-  const params = parsePpocrParams(raw.params, `${path}.params`, id);
-  return {
-    id,
-    name,
-    label,
-    recommended,
-    revision,
-    pipeline: "ppocr-dbnet-ctc",
-    files,
-    params,
-  };
-}
-
-function parseBen2Files(
-  raw: unknown,
-  path: string,
-  modelId: string,
-): { model: AssetFile } {
-  if (!isPlainObject(raw)) {
-    fail(path, "必须是对象", modelId);
-  }
-  const keys = Object.keys(raw).sort();
-  if (keys.length !== 1 || keys[0] !== "model") {
-    fail(path, "必须恰好包含 model 一个键", modelId);
-  }
-  return { model: parseAssetFile(raw.model, `${path}.model`, modelId) };
-}
-
-function parseBen2RemoveBgEntry(
-  raw: Record<string, unknown>,
-  index: number,
-): Ben2RemoveBgModelEntry {
-  const path = `models[${index}]`;
-  const id = expectString(raw, "id", path);
-  const name = expectString(raw, "name", path, id);
-  const label = expectString(raw, "label", path, id);
-  const revision = expectString(raw, "revision", path, id);
-  const recommended = expectBoolean(raw, "recommended", path, id);
-  const pipeline = expectString(raw, "pipeline", path, id);
-  if (pipeline !== "ben2-background-removal") {
-    fail(
-      `${path}.pipeline`,
-      `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
-      id,
-    );
-  }
-  const files = parseBen2Files(raw.files, `${path}.files`, id);
-  return {
-    id,
-    name,
-    label,
-    recommended,
-    revision,
-    pipeline: "ben2-background-removal",
-    files,
-  };
-}
-
-function parseModelEntry(
-  raw: Record<string, unknown>,
-  index: number,
-): ModelEntry {
-  const path = `models[${index}]`;
-  const idHint =
-    typeof raw.id === "string" && raw.id.trim() !== "" ? raw.id : null;
-  const pipeline = expectString(raw, "pipeline", path, idHint);
-  if (pipeline === "ppocr-dbnet-ctc") return parsePpocrEntry(raw, index);
-  if (pipeline === "ben2-background-removal") {
-    return parseBen2RemoveBgEntry(raw, index);
-  }
-  fail(
-    `${path}.pipeline`,
-    `未知 pipeline "${pipeline}"（当前仅支持 ppocr-dbnet-ctc 与 ben2-background-removal）`,
-    idHint,
-  );
-}
-
 /** 解析并完整校验 catalog；任何结构/参数错误在此抛出（早于资产下载） */
-export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
+export function parseCatalog<T extends AssetModelEntry>(
+  raw: unknown,
+  parseEntry: (raw: Record<string, unknown>, index: number) => T,
+): ValidatedModelCatalog<T> {
   if (!isPlainObject(raw)) {
     fail("", "根节点必须是对象");
   }
@@ -365,7 +156,7 @@ export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
     fail("models", "不能为空");
   }
 
-  const models: ModelEntry[] = [];
+  const models: T[] = [];
   const ids = new Set<string>();
   const recommendedByPipeline = new Map<string, number>();
 
@@ -374,7 +165,7 @@ export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
     if (!isPlainObject(item)) {
       fail(`models[${i}]`, "必须是对象");
     }
-    const entry = parseModelEntry(item, i);
+    const entry = parseEntry(item, i);
     if (ids.has(entry.id)) {
       fail(`models[${i}].id`, `重复的模型 id "${entry.id}"`, entry.id);
     }
@@ -402,7 +193,7 @@ export function parseModelCatalog(raw: unknown): ValidatedModelCatalog {
   return { models };
 }
 
-export function toModelSummary(entry: ModelEntry): ModelSummary {
+export function toModelSummary(entry: AssetModelEntry): ModelSummary {
   const downloadBytes = Object.values(entry.files).reduce(
     (sum, file) => sum + file.sizeBytes,
     0,
@@ -432,19 +223,15 @@ export function assetCacheKey(url: string, revision: string): string {
   return `${url}${sep}rev=${encodeURIComponent(revision)}`;
 }
 
-/** 浏览器：fetch /models.json 并校验（子路径部署时自动加 basePath） */
-export async function loadModelCatalog(
-  url = withBasePath("/models.json"),
-): Promise<ValidatedModelCatalog> {
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    throw new ManifestError(`HTTP ${resp.status}`, { path: url });
-  }
+/** URL 和解析器由调用者提供；不读取宿主框架环境变量。 */
+export async function loadCatalog<T>(url: string, parse: (raw: unknown) => T, signal?: AbortSignal): Promise<T> {
+  const resp = await fetch(url, { signal });
+  if (!resp.ok) throw new ManifestError(`HTTP ${resp.status}`, { path: url });
   let raw: unknown;
-  try {
-    raw = await resp.json();
-  } catch {
+  try { raw = await resp.json(); }
+  catch (error) {
+    if (signal?.aborted) throw signal.reason;
     throw new ManifestError("响应不是合法 JSON", { path: url });
   }
-  return parseModelCatalog(raw);
+  return parse(raw);
 }

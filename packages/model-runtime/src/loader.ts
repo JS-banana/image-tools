@@ -1,206 +1,202 @@
-// 通用资产加载：Cache API + revision 键 + 纯字节；不解析 dict、不理解模型结构
-import { assetCacheKey, withBasePath } from "./manifest.ts";
+// Browser + dedicated Worker asset store. Deployment URLs and cache ownership are explicit.
+import { assetCacheKey } from "./manifest.ts";
 import type { AssetFile, ModelLoadProgress } from "./types.ts";
 
-const CACHE_NAME = "ocr-models-v1";
+export interface AssetLoadResult {
+  files: Record<string, ArrayBuffer>;
+  source: "cache" | "network" | "mixed";
+}
+export type AssetLoader = (
+  files: Readonly<Record<string, AssetFile>>,
+  revision: string,
+  onProgress?: (progress: ModelLoadProgress) => void,
+  signal?: AbortSignal,
+) => Promise<AssetLoadResult>;
 
-async function getCache(): Promise<Cache | null> {
-  if (typeof window === "undefined" || !("caches" in window)) return null;
-  try {
-    return await caches.open(CACHE_NAME);
-  } catch (e) {
-    console.warn("[loader] Cache API 不可用:", (e as Error).message);
-    return null;
-  }
+export interface AssetStoreOptions {
+  /** Owned by one tool, e.g. image-tools-ocr-v1; pruning never touches other caches. */
+  namespace: string;
+  /** Site/CDN base including deployment path, e.g. https://host/image-tools/. */
+  baseURL?: string;
+  /** Overrides baseURL; receives the catalog's logical URL without revision. */
+  resolveURL?: (url: string) => string;
+}
+export interface AssetStore {
+  loadAssets: AssetLoader;
+  /** Supply cacheKey(url, revision) for this tool's complete catalog, never a selected model. */
+  prune(validCacheKeys: ReadonlySet<string>): Promise<void>;
+  cacheKey(url: string, revision: string): string;
+}
+
+function checkAbort(signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+}
+function warn(message: string, error: unknown): void {
+  console.warn(`[loader] ${message}:`, error instanceof Error ? error.message : String(error));
+}
+
+/** Resolve a logical path against a deployment base, preserving its pathname prefix. */
+export function resolveAssetURL(url: string, options: Pick<AssetStoreOptions, "baseURL" | "resolveURL">): string {
+  if (options.resolveURL) return options.resolveURL(url);
+  if (!options.baseURL || /^https?:\/\//i.test(url)) return url;
+  const base = options.baseURL.replace(/\/+$/, "");
+  return `${base}/${url.replace(/^\/+/, "")}`;
+}
+
+async function getCache(namespace: string): Promise<Cache | null> {
+  if (!("caches" in globalThis)) return null;
+  try { return await globalThis.caches.open(namespace); }
+  catch (error) { warn("Cache API 不可用", error); return null; }
 }
 
 async function fetchNetwork(
   file: AssetFile,
   key: string,
   cache: Cache | null,
-  onBytes?: (loaded: number, fromCache: boolean) => void,
+  signal: AbortSignal,
+  onBytes: (loaded: number, fromCache: boolean) => void,
 ): Promise<ArrayBuffer> {
-  if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
-    try {
-      const { quota, usage } = await navigator.storage.estimate();
-      if (quota && usage !== undefined && quota - usage < 50 * 1024 * 1024) {
-        console.warn(
-          "[loader] 存储剩余空间不足:",
-          Math.round((quota - usage) / 1048576),
-          "MB",
-        );
-      }
-    } catch {
-      /* 忽略 */
-    }
-  }
-
-  const url = withBasePath(key);
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}: ${url}`);
-
+  checkAbort(signal);
+  const resp = await fetch(key, { signal });
+  if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}: ${key}`);
   const expected = file.sizeBytes;
   const bytes = new Uint8Array(expected);
   let offset = 0;
-
   const append = (chunk: Uint8Array) => {
+    checkAbort(signal);
     if (offset + chunk.byteLength > expected) {
-      throw new Error(
-        `资产字节溢出 (network): ${file.url} 已读 ${offset + chunk.byteLength} > 声明 sizeBytes ${expected}`,
-      );
+      throw new Error(`资产字节溢出 (network): ${file.url} 已读 ${offset + chunk.byteLength} > 声明 sizeBytes ${expected}`);
     }
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
-    onBytes?.(offset, false);
+    onBytes(offset, false);
   };
-
   if (!resp.body) {
     append(new Uint8Array(await resp.arrayBuffer()));
   } else {
     const reader = resp.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      append(value);
-    }
-  }
-
-  if (offset !== expected) {
-    throw new Error(
-      `资产字节不足 (network): ${file.url} 实际 ${offset} ≠ 声明 sizeBytes ${expected}`,
-    );
-  }
-
-  if (cache) {
+    const cancel = () => { void reader.cancel(signal.reason).catch(() => undefined); };
+    signal.addEventListener("abort", cancel, { once: true });
     try {
-      await cache.put(key, new Response(bytes));
-    } catch (e) {
-      console.warn("[loader] 缓存写入失败:", (e as Error).message);
+      checkAbort(signal);
+      for (;;) {
+        const { done, value } = await reader.read();
+        checkAbort(signal);
+        if (done) break;
+        append(value);
+      }
+    } catch (error) {
+      await reader.cancel(error).catch(() => undefined);
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      reader.releaseLock();
     }
   }
+  checkAbort(signal);
+  if (offset !== expected) {
+    throw new Error(`资产字节不足 (network): ${file.url} 实际 ${offset} ≠ 声明 sizeBytes ${expected}`);
+  }
+  if (cache) {
+    try { await cache.put(key, new Response(bytes)); }
+    catch (error) { warn("缓存写入失败", error); }
+  }
+  checkAbort(signal);
   return bytes.buffer;
 }
 
 async function loadOne(
   file: AssetFile,
-  revision: string,
-  onBytes?: (loaded: number, fromCache: boolean) => void,
+  key: string,
+  cache: Cache | null,
+  signal: AbortSignal,
+  onBytes: (loaded: number, fromCache: boolean) => void,
 ): Promise<{ buffer: ArrayBuffer; fromCache: boolean }> {
-  const key = assetCacheKey(file.url, revision);
-  const cache = await getCache();
-
+  checkAbort(signal);
   if (cache) {
-    const hit = await cache.match(key);
-    if (hit) {
-      const buffer = await hit.arrayBuffer();
-      if (buffer.byteLength === file.sizeBytes) {
-        onBytes?.(buffer.byteLength, true);
-        return { buffer, fromCache: true };
+    try {
+      const hit = await cache.match(key);
+      checkAbort(signal);
+      if (hit) {
+        const buffer = await hit.arrayBuffer();
+        checkAbort(signal);
+        if (buffer.byteLength === file.sizeBytes) {
+          onBytes(buffer.byteLength, true);
+          return { buffer, fromCache: true };
+        }
+        console.warn(`[loader] 缓存字节错配，删除后重取: ${file.url} ${buffer.byteLength} ≠ ${file.sizeBytes}`);
+        try { await cache.delete(key); }
+        catch (error) { warn("坏缓存删除失败", error); }
       }
-      // 坏 cache：删除后走网络重取
-      console.warn(
-        `[loader] 缓存字节错配，删除后重取: ${file.url} ` +
-          `${buffer.byteLength} ≠ ${file.sizeBytes}`,
-      );
-      try {
-        await cache.delete(key);
-      } catch (e) {
-        console.warn("[loader] 坏缓存删除失败:", (e as Error).message);
-      }
+    } catch (error) {
+      checkAbort(signal);
+      warn("缓存读取失败，改用网络", error);
     }
   }
-
-  const buffer = await fetchNetwork(file, key, cache, onBytes);
-  return { buffer, fromCache: false };
+  return { buffer: await fetchNetwork(file, key, cache, signal, onBytes), fromCache: false };
 }
 
-/**
- * 按文件描述加载字节。cache key = url?rev=revision。
- * 进度按 sizeBytes 加权；无法确定总大小时 pct 为 null。
- * 最终 buffer.byteLength 必须等于声明 sizeBytes。
- */
-export async function loadAssets(
-  files: Readonly<Record<string, AssetFile>>,
-  revision: string,
-  onProgress?: (progress: ModelLoadProgress) => void,
-): Promise<{
-  files: Record<string, ArrayBuffer>;
-  source: "cache" | "network" | "mixed";
-}> {
-  const entries = Object.entries(files);
-  const totalKnown = entries.reduce((s, [, f]) => s + f.sizeBytes, 0);
-  const out: Record<string, ArrayBuffer> = {};
-  let cacheHits = 0;
-  let networkGets = 0;
-  const loadedPerKey: Record<string, number> = {};
-
-  const report = (label: string, fromCache: boolean) => {
-    if (!onProgress) return;
-    let loadedBytes = 0;
-    for (const [k, f] of entries) {
-      loadedBytes += Math.min(loadedPerKey[k] ?? 0, f.sizeBytes);
+export function createAssetStore(options: AssetStoreOptions): AssetStore {
+  if (!options.namespace.trim()) throw new Error("Asset cache namespace must be non-empty");
+  const cacheKey = (url: string, revision: string) => assetCacheKey(resolveAssetURL(url, options), revision);
+  const loadAssets: AssetLoader = async (files, revision, onProgress, signal) => {
+    checkAbort(signal);
+    const entries = Object.entries(files);
+    for (const [, file] of entries) {
+      if (!Number.isSafeInteger(file.sizeBytes) || file.sizeBytes <= 0) throw new Error("Asset sizeBytes must be a positive safe integer");
     }
-    const totalBytes = totalKnown;
-    onProgress({
-      pct:
-        totalBytes > 0
-          ? Math.min(100, (loadedBytes / totalBytes) * 100)
-          : null,
-      label,
-      fromCache,
-      loadedBytes,
-      totalBytes,
-    });
-  };
-
-  await Promise.all(
-    entries.map(async ([key, file]) => {
-      const label = `下载 ${key}`;
-      const result = await loadOne(file, revision, (loaded, fromCache) => {
-        loadedPerKey[key] = loaded;
-        report(fromCache ? "读取本机缓存" : label, fromCache);
-      });
-      loadedPerKey[key] = file.sizeBytes;
-      out[key] = result.buffer;
-      if (result.fromCache) cacheHits++;
-      else networkGets++;
-      report(result.fromCache ? "读取本机缓存" : label, result.fromCache);
-    }),
-  );
-
-  let source: "cache" | "network" | "mixed";
-  if (networkGets === 0) source = "cache";
-  else if (cacheHits === 0) source = "network";
-  else source = "mixed";
-
-  return { files: out, source };
-}
-
-/** 按整份 catalog 有效 key 集合清理；不在集合内的条目删除 */
-export async function pruneAssetCache(
-  validCacheKeys: ReadonlySet<string>,
-): Promise<void> {
-  const cache = await getCache();
-  if (!cache) return;
-  try {
-    const keys = await cache.keys();
-    await Promise.all(
-      keys.map(async (req) => {
-        const keyUrl = typeof req === "string" ? req : req.url;
-        // Cache API 可能存绝对 URL；用 pathname+search 或完整串比对
-        let rel = keyUrl;
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    const totalBytes = entries.reduce((sum, [, f]) => sum + f.sizeBytes, 0);
+    const loadedPerKey = new Map<string, number>();
+    let firstError: unknown;
+    let failed = false;
+    try {
+      const cache = await getCache(options.namespace);
+      checkAbort(controller.signal);
+      const results = await Promise.allSettled(entries.map(async ([key, file]) => {
         try {
-          const u = new URL(keyUrl, "http://localhost");
-          rel = u.pathname + u.search;
-        } catch {
-          /* keep */
+          const result = await loadOne(file, cacheKey(file.url, revision), cache, controller.signal, (loaded, fromCache) => {
+            loadedPerKey.set(key, loaded);
+            const loadedBytes = entries.reduce((sum, [name, asset]) => sum + Math.min(loadedPerKey.get(name) ?? 0, asset.sizeBytes), 0);
+            onProgress?.({ pct: totalBytes ? Math.min(100, loadedBytes / totalBytes * 100) : null, label: fromCache ? "读取本机缓存" : `下载 ${key}`, fromCache, loadedBytes, totalBytes });
+          });
+          return [key, result] as const;
+        } catch (error) {
+          if (!failed) { failed = true; firstError = error; controller.abort(error); }
+          throw error;
         }
-        if (!validCacheKeys.has(rel) && !validCacheKeys.has(keyUrl)) {
-          await cache.delete(req);
-        }
-      }),
-    );
-  } catch (e) {
-    console.warn("[loader] 缓存清理失败:", (e as Error).message);
-  }
+      }));
+      if (failed) throw firstError;
+      checkAbort(controller.signal);
+      const out: Record<string, ArrayBuffer> = {};
+      let cacheHits = 0;
+      for (const result of results) {
+        if (result.status !== "fulfilled") throw result.reason;
+        const [key, asset] = result.value;
+        out[key] = asset.buffer;
+        if (asset.fromCache) cacheHits++;
+      }
+      return { files: out, source: cacheHits === entries.length ? "cache" : cacheHits === 0 ? "network" : "mixed" };
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
+  };
+  const prune = async (validCacheKeys: ReadonlySet<string>): Promise<void> => {
+    const cache = await getCache(options.namespace);
+    if (!cache) return;
+    const resolved = validCacheKeys;
+    try {
+      const keys = await cache.keys();
+      await Promise.all(keys.map(async (req) => {
+        const url = typeof req === "string" ? req : req.url;
+        let relative = url;
+        try { const u = new URL(url); relative = u.pathname + u.search; } catch { /* logical path */ }
+        if (!resolved.has(url) && !resolved.has(relative)) await cache.delete(req);
+      }));
+    } catch (error) { warn("缓存清理失败", error); }
+  };
+  return { loadAssets, prune, cacheKey };
 }

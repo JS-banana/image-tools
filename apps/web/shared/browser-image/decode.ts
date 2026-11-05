@@ -1,9 +1,12 @@
-// 去背景输入边界：解码前读取 JPG / PNG / WebP 尺寸与方向，限制像素峰值。
-// 头部解析只读取小段 Blob，Node 可测；decodeImageFile 仅由客户端调用。
+// Browser image mechanics: inspect JPG/PNG/WebP headers before allocating pixels.
+// Callers choose their own source budget and resizing policy.
 
-export const MAX_IMAGE_SIDE = 4096;
-export const MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024;
-export const MAX_SOURCE_PIXELS = MAX_IMAGE_SIDE * MAX_IMAGE_SIDE;
+export interface ImageDecodePolicy {
+  maxFileBytes: number;
+  maxSourcePixels: number;
+  /** null preserves source resolution, e.g. long OCR screenshots. */
+  maxOutputSide: number | null;
+}
 
 const MAX_METADATA_CHUNKS = 1024;
 const MAX_EXIF_BYTES = 1024 * 1024;
@@ -311,12 +314,24 @@ export async function readRasterMetadata(blob: Blob): Promise<RasterMetadata> {
   fail("不支持的文件格式，请选择 JPG、PNG 或 WebP 图片");
 }
 
-export function planImageDecode(metadata: RasterMetadata): ImageDecodePlan {
-  if (metadata.width > Math.floor(MAX_SOURCE_PIXELS / metadata.height)) {
-    fail("图片像素超过 16,777,216（4096²），请先缩小图片后再试");
+export function planImageDecode(
+  metadata: RasterMetadata,
+  policy: ImageDecodePolicy,
+): ImageDecodePlan {
+  if (
+    !Number.isSafeInteger(policy.maxSourcePixels) || policy.maxSourcePixels <= 0 ||
+    !Number.isSafeInteger(policy.maxFileBytes) || policy.maxFileBytes <= 0 ||
+    (policy.maxOutputSide !== null &&
+      (!Number.isSafeInteger(policy.maxOutputSide) || policy.maxOutputSide <= 0))
+  ) {
+    throw new TypeError("图片解码策略必须使用正整数预算");
+  }
+  if (metadata.width > Math.floor(policy.maxSourcePixels / metadata.height)) {
+    fail(`图片像素超过 ${policy.maxSourcePixels.toLocaleString("en-US")}，请先缩小图片后再试`);
   }
   const longest = Math.max(metadata.displayWidth, metadata.displayHeight);
-  const scale = longest > MAX_IMAGE_SIDE ? MAX_IMAGE_SIDE / longest : 1;
+  const side = policy.maxOutputSide;
+  const scale = side !== null && longest > side ? side / longest : 1;
   return {
     metadata,
     width: Math.max(1, Math.round(metadata.displayWidth * scale)),
@@ -344,12 +359,15 @@ function rasterizeToImageData(
   }
 }
 
-export async function decodeImageFile(file: File): Promise<DecodedImage> {
-  if (file.size > MAX_IMAGE_FILE_BYTES) {
-    fail("文件超过 50 MB，请先缩小图片后再试");
+export async function decodeImageFile(
+  file: File,
+  policy: ImageDecodePolicy,
+): Promise<DecodedImage> {
+  if (file.size > policy.maxFileBytes) {
+    fail(`文件超过 ${Math.round(policy.maxFileBytes / (1024 * 1024))} MB，请先缩小图片后再试`);
   }
   try {
-    const plan = planImageDecode(await readRasterMetadata(file));
+    const plan = planImageDecode(await readRasterMetadata(file), policy);
     if (typeof createImageBitmap === "function") {
       const bitmap = await createImageBitmap(file, {
         imageOrientation: "from-image",

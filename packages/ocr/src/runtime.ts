@@ -4,13 +4,8 @@
 // 进入与离开临界区双重检查，保证 Medium 独占与 stale 立即 dispose。
 // Node 可导入：模块无相对路径值导入。loadAssets/createPipeline 均由组合根（UI/测试）
 // 显式注入；本模块不触达 onnxruntime-web。
-import {
-  isPpocrModelEntry,
-  type AssetFile,
-  type ModelLoadProgress,
-  type PpocrModelEntry,
-  type ValidatedModelCatalog,
-} from "@img/model-runtime";
+import type { AssetLoader, ModelLoadProgress } from "@img/model-runtime";
+import { isPpocrModelEntry, type PpocrModelEntry, type OcrModelCatalog } from "./models.ts";
 import type { OcrPipeline, OcrRunResult, ProgressFn } from "./types.ts";
 
 export type ModelPhase = "unloaded" | "loading" | "ready" | "failed";
@@ -47,14 +42,7 @@ export class RuntimeClosedError extends Error {
   }
 }
 
-type LoadAssetsFn = (
-  files: Readonly<Record<string, AssetFile>>,
-  revision: string,
-  onProgress?: (progress: ModelLoadProgress) => void,
-) => Promise<{
-  files: Record<string, ArrayBuffer>;
-  source: "cache" | "network" | "mixed";
-}>;
+export type LoadAssetsFn = AssetLoader;
 
 type CreatePipelineFn = (
   entry: PpocrModelEntry,
@@ -62,7 +50,7 @@ type CreatePipelineFn = (
 ) => Promise<OcrPipeline>;
 
 export interface OcrRuntimeOptions {
-  catalog: ValidatedModelCatalog;
+  catalog: OcrModelCatalog;
   /** 纯字节 loader（浏览器为真实 Cache API loader；测试注入替身） */
   loadAssets: LoadAssetsFn;
   /** 组合根注入的 Pipeline factory（浏览器为 @img/ocr 的 createPpocrPipeline；测试注入替身） */
@@ -82,6 +70,7 @@ interface Slot {
   error: string | null;
   /** 进行中的共享加载 Promise（去重）；null 表示无在途加载 */
   load: Promise<OcrPipeline> | null;
+  loadController: AbortController | null;
 }
 
 function readableError(e: unknown): string {
@@ -127,6 +116,7 @@ export class OcrRuntime {
         source: null,
         error: null,
         load: null,
+        loadController: null,
       });
     }
     this.exclusive =
@@ -248,6 +238,9 @@ export class OcrRuntime {
 
     const alreadyReady = slot.phase === "ready" && slot.pipeline !== null;
     this.selected = id;
+    for (const other of this.slots.values()) {
+      if (other !== slot) other.loadController?.abort(new StaleSelectionError());
+    }
     const gen = ++this.generation;
 
     try {
@@ -277,15 +270,26 @@ export class OcrRuntime {
     if (slot.phase === "ready" && slot.pipeline) {
       return Promise.resolve(slot.pipeline);
     }
+    if (slot.load && slot.loadController?.signal.aborted) {
+      // Returning to a cancelled model waits for its previous attempt to settle,
+      // then starts a fresh load. Never reattach to an already aborted request.
+      return slot.load.catch(() => undefined).then(() => {
+        if (this.closed) throw new RuntimeClosedError();
+        if (this.selected !== slot.entry.id) throw new StaleSelectionError();
+        return this.ensurePipeline(slot);
+      });
+    }
     if (!slot.load) {
-      const p = this.doLoad(slot);
+      const controller = new AbortController();
+      slot.loadController = controller;
+      const p = this.doLoad(slot, controller.signal);
       slot.load = p;
       p.then(
         () => {
-          if (slot.load === p) slot.load = null;
+          if (slot.load === p) { slot.load = null; slot.loadController = null; }
         },
         () => {
-          if (slot.load === p) slot.load = null;
+          if (slot.load === p) { slot.load = null; slot.loadController = null; }
         },
       );
     }
@@ -297,7 +301,7 @@ export class OcrRuntime {
     if (slot.phase === "loading") this.setPhase(slot, "unloaded");
   }
 
-  private async doLoad(slot: Slot): Promise<OcrPipeline> {
+  private async doLoad(slot: Slot, signal: AbortSignal): Promise<OcrPipeline> {
     const id = slot.entry.id;
     this.setPhase(slot, "loading");
 
@@ -308,10 +312,11 @@ export class OcrRuntime {
       loaded = await this.loadAssetsFn(
         { det, rec, dict },
         slot.entry.revision,
-        (p) => this.onLoadProgress?.(id, p),
+        (p) => { if (!signal.aborted && !this.closed) this.onLoadProgress?.(id, p); },
+        signal,
       );
     } catch (e) {
-      if (this.selected === id && !this.closed) {
+      if (this.selected === id && !this.closed && !signal.aborted) {
         this.setPhase(slot, "failed", readableError(e));
       } else {
         this.settleAfterLoadAbort(slot);
@@ -320,7 +325,7 @@ export class OcrRuntime {
     }
 
     // 锁外快速短路：stale 资产加载不创建 Session
-    if (this.selected !== id || this.closed) {
+    if (this.selected !== id || this.closed || signal.aborted) {
       this.settleAfterLoadAbort(slot);
       throw new StaleSelectionError();
     }
@@ -329,19 +334,19 @@ export class OcrRuntime {
     try {
       pipeline = await this.enqueueTransition(async () => {
         // 进入临界区双检
-        if (this.selected !== id || this.closed) return null;
+        if (this.selected !== id || this.closed || signal.aborted) return null;
         await this.releaseForResidency(id);
         const files = loaded.files as Record<"det" | "rec" | "dict", ArrayBuffer>;
         const p = await this.createPipelineFn(slot.entry, files);
         // 离开临界区双检：创建完成但已过期 → 立即 dispose
-        if (this.selected !== id || this.closed) {
+        if (this.selected !== id || this.closed || signal.aborted) {
           await safeDispose(p);
           return null;
         }
         return p;
       });
     } catch (e) {
-      if (this.selected === id && !this.closed) {
+      if (this.selected === id && !this.closed && !signal.aborted) {
         this.setPhase(slot, "failed", readableError(e));
       } else {
         this.settleAfterLoadAbort(slot);
@@ -397,6 +402,7 @@ export class OcrRuntime {
     this.closed = true;
     this.selected = null;
     this.generation++;
+    for (const slot of this.slots.values()) slot.loadController?.abort(new RuntimeClosedError());
 
     const pendingLoads = [...this.slots.values()]
       .map((s) => s.load)

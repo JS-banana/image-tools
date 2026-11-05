@@ -3,9 +3,8 @@
 import * as ort from "onnxruntime-web";
 import {
   isBen2RemoveBgModelEntry,
-  withBasePath,
   type Ben2RemoveBgModelEntry,
-} from "@img/model-runtime";
+} from "./models.ts";
 import { postprocess } from "./postprocess.ts";
 import { preprocess } from "./preprocess.ts";
 import {
@@ -17,6 +16,7 @@ import {
   InvalidAlphaError,
   PipelineDisposedError,
   SessionContractError,
+  type RemoveBgEngineOptions,
   type RemoveBgBackend,
   type RemoveBgPipeline,
   type RemoveBgRunResult,
@@ -109,6 +109,7 @@ export async function createBen2Pipeline(
   entry: Ben2RemoveBgModelEntry,
   model: ArrayBuffer,
   backend: RemoveBgBackend,
+  options: RemoveBgEngineOptions,
 ): Promise<RemoveBgPipeline> {
   if (!isBen2RemoveBgModelEntry(entry)) {
     throw new SessionContractError("entry 必须是 ben2-background-removal 清单条目");
@@ -117,7 +118,8 @@ export async function createBen2Pipeline(
     throw new SessionContractError("模型字节必须是非空 ArrayBuffer");
   }
 
-  ort.env.wasm.wasmPaths = withBasePath("/ort/");
+  if (!options.wasmBaseURL) throw new SessionContractError("必须提供 wasmBaseURL");
+  ort.env.wasm.wasmPaths = options.wasmBaseURL;
   ort.env.wasm.numThreads = 1;
 
   let session: ort.InferenceSession;

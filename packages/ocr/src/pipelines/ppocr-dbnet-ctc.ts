@@ -1,10 +1,12 @@
 // PP-OCR 流水线：DBNet 检测 + CTC 识别（最终 Module 位置）
-// 只能被客户端模块引用（onnxruntime-web 的 exports 对 node 显式禁用）。
-// 全量导入：/webgpu 条件导入不含 webgl 后端，而 webgl 是 iOS/Safari 的 GPU 兜底。
-import * as ort from "onnxruntime-web";
-import { withBasePath } from "@img/model-runtime";
-import type { PpocrModelEntry } from "@img/model-runtime";
+// 重型 /engine 入口；可在支持 OffscreenCanvas 的 dedicated Worker 中运行。
+// ORT 1.27 默认入口不注册 WebGL；/all 保留 WebGPU → WebGL → WASM 兜底。
+// WebGL 后端先尝试 OffscreenCanvas，Worker 中不可用时由 createSession 继续尝试 WASM。
+import * as ort from "onnxruntime-web/all";
+import type { PpocrModelEntry } from "../models.ts";
+import { createImageCanvas } from "../image-canvas.ts";
 import type {
+  OcrEngineOptions,
   OcrLine,
   OcrPipeline,
   OcrRunResult,
@@ -44,9 +46,7 @@ function resizeImageData(
   targetW: number,
   targetH: number,
 ): ImageData {
-  const off = document.createElement("canvas");
-  off.width = targetW;
-  off.height = targetH;
+  const off = createImageCanvas(targetW, targetH);
   const offCtx = off.getContext("2d", { willReadFrequently: true })!;
   offCtx.drawImage(imgSource, 0, 0, targetW, targetH);
   return offCtx.getImageData(0, 0, targetW, targetH);
@@ -263,14 +263,21 @@ async function releaseSessions(
   }
 }
 
+function safeDisposeTensor(tensor: ort.Tensor): void {
+  try { tensor.dispose(); }
+  catch (error) { console.warn("[ppocr] tensor dispose 失败:", error); }
+}
+
 /**
  * 创建 PP-OCR Pipeline。files 为纯字节；dict 在此解析并做内容维数校验。
  */
 export async function createPpocrPipeline(
   entry: PpocrModelEntry,
   files: Record<"det" | "rec" | "dict", ArrayBuffer>,
+  options: OcrEngineOptions,
 ): Promise<OcrPipeline> {
-  ort.env.wasm.wasmPaths = withBasePath("/ort/");
+  if (!options.wasmBaseURL) throw new Error("必须提供 wasmBaseURL");
+  ort.env.wasm.wasmPaths = options.wasmBaseURL;
   ort.env.wasm.numThreads = 1;
 
   const chars = parseDict(files.dict);
@@ -325,9 +332,7 @@ export async function createPpocrPipeline(
     const origW = imageData.width;
     const origH = imageData.height;
 
-    const src = document.createElement("canvas");
-    src.width = origW;
-    src.height = origH;
+    const src = createImageCanvas(origW, origH);
     src.getContext("2d")!.putImageData(imageData, 0, 0);
 
     const r = Math.min(1, P.detMaxSide / Math.max(origW, origH));
@@ -339,29 +344,23 @@ export async function createPpocrPipeline(
 
     onProgress({ pct: 20, label: "文本检测推理…" });
     const tDet = performance.now();
-    const detResult = await detSession.run({
-      [detSession.inputNames[0]]: detTensor,
-    });
-    const detMs = performance.now() - tDet;
-    const detOutput = detResult[detSession.outputNames[0]];
-    const probData = detOutput.data as Float32Array;
-    const probH = detOutput.dims[2];
-    const probW = detOutput.dims[3];
-    const scaleX = origW / probW;
-    const scaleY = origH / probH;
-
-    onProgress({ pct: 35, label: "DBNet 后处理…" });
-    const boxes = dbBoxes(
-      probData,
-      probW,
-      probH,
-      scaleX,
-      scaleY,
-      P.detThresh,
-      P.boxThresh,
-      P.unclipRatio,
-      P.minBoxSide,
-    );
+    let detResult: Awaited<ReturnType<typeof detSession.run>> | undefined;
+    let detMs = 0;
+    let boxes: ReturnType<typeof dbBoxes>;
+    try {
+      detResult = await detSession.run({ [detSession.inputNames[0]]: detTensor });
+      detMs = performance.now() - tDet;
+      const detOutput = detResult[detSession.outputNames[0]];
+      const probData = await detOutput.getData() as Float32Array;
+      const probH = detOutput.dims[2];
+      const probW = detOutput.dims[3];
+      onProgress({ pct: 35, label: "DBNet 后处理…" });
+      boxes = dbBoxes(probData, probW, probH, origW / probW, origH / probH,
+        P.detThresh, P.boxThresh, P.unclipRatio, P.minBoxSide);
+    } finally {
+      safeDisposeTensor(detTensor);
+      for (const tensor of Object.values(detResult ?? {})) safeDisposeTensor(tensor);
+    }
     console.log("[OCR] 检测到", boxes.length, "个文本区域");
 
     if (boxes.length === 0) {
@@ -385,9 +384,7 @@ export async function createPpocrPipeline(
       const parts = Math.ceil(recW / P.recMaxWidth);
       const partW = Math.max(8, Math.round(recW / parts));
 
-      const off = document.createElement("canvas");
-      off.width = cropped.width;
-      off.height = cropped.height;
+      const off = createImageCanvas(cropped.width, cropped.height);
       off.getContext("2d")!.putImageData(cropped, 0, 0);
 
       onProgress({
@@ -400,9 +397,7 @@ export async function createPpocrPipeline(
       for (let p = 0; p < parts; p++) {
         const srcX = (cropped.width * p) / parts;
         const srcW = cropped.width / parts;
-        const off2 = document.createElement("canvas");
-        off2.width = Math.ceil(srcW);
-        off2.height = cropped.height;
+        const off2 = createImageCanvas(Math.ceil(srcW), cropped.height);
         off2.getContext("2d")!.drawImage(off, -srcX, 0);
 
         const recResized = resizeImageData(off2, partW, P.recHeight);
@@ -415,21 +410,23 @@ export async function createPpocrPipeline(
         ]);
 
         const tRec = performance.now();
-        const recResult = await recSession.run({
-          [recSession.inputNames[0]]: recTensor,
-        });
-        recMs += performance.now() - tRec;
-        const recOutput = recResult[recSession.outputNames[0]];
-        const T = recOutput.dims[1];
-        const C = recOutput.dims[2];
-        if (C !== entry.params.dictSize) {
-          throw new Error(
-            `rec 输出维 C=${C} 与 params.dictSize=${entry.params.dictSize} 不一致`,
-          );
+        let recResult: Awaited<ReturnType<typeof recSession.run>> | undefined;
+        try {
+          recResult = await recSession.run({ [recSession.inputNames[0]]: recTensor });
+          recMs += performance.now() - tRec;
+          const recOutput = recResult[recSession.outputNames[0]];
+          const T = recOutput.dims[1];
+          const C = recOutput.dims[2];
+          if (C !== entry.params.dictSize) {
+            throw new Error(`rec 输出维 C=${C} 与 params.dictSize=${entry.params.dictSize} 不一致`);
+          }
+          const decoded = ctcDecode(await recOutput.getData() as Float32Array, T, C, charList);
+          fullText += decoded.text;
+          if (decoded.charCount) confs.push(decoded.confidence);
+        } finally {
+          safeDisposeTensor(recTensor);
+          for (const tensor of Object.values(recResult ?? {})) safeDisposeTensor(tensor);
         }
-        const decoded = ctcDecode(recOutput.data as Float32Array, T, C, charList);
-        fullText += decoded.text;
-        if (decoded.charCount) confs.push(decoded.confidence);
       }
 
       const text = fullText.trim();
@@ -447,7 +444,7 @@ export async function createPpocrPipeline(
   async function dispose(): Promise<void> {
     if (disposed) return;
     disposed = true;
-    await Promise.all([detSession.release(), recSession.release()]);
+    await releaseSessions(detSession, recSession);
   }
 
   return { backend, run, dispose };

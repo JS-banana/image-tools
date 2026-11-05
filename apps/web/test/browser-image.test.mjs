@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  MAX_SOURCE_PIXELS,
   planImageDecode,
   readRasterMetadata,
-} from "../lib/remove-bg-image.ts";
+} from "../shared/browser-image/decode.ts";
+import { OCR_IMAGE_POLICY } from "../features/ocr/image-policy.ts";
+import { REMOVE_BG_IMAGE_POLICY } from "../features/remove-bg/image-policy.ts";
 
 function concat(...parts) {
   const size = parts.reduce((sum, part) => sum + part.length, 0);
@@ -145,7 +146,7 @@ describe("readRasterMetadata", () => {
     const metadata = await readRasterMetadata(new Blob([jpeg(6000, 2000, 6)]));
     assert.equal(metadata.displayWidth, 2000);
     assert.equal(metadata.displayHeight, 6000);
-    assert.deepEqual(planImageDecode(metadata), {
+    assert.deepEqual(planImageDecode(metadata, REMOVE_BG_IMAGE_POLICY), {
       metadata,
       width: 1365,
       height: 4096,
@@ -161,8 +162,8 @@ describe("readRasterMetadata", () => {
     assert.equal(metadata.orientation, 8);
     assert.equal(metadata.displayWidth, 2000);
     assert.equal(metadata.displayHeight, 8000);
-    assert.equal(planImageDecode(metadata).width, 1024);
-    assert.equal(planImageDecode(metadata).height, 4096);
+    assert.equal(planImageDecode(metadata, REMOVE_BG_IMAGE_POLICY).width, 1024);
+    assert.equal(planImageDecode(metadata, REMOVE_BG_IMAGE_POLICY).height, 4096);
   });
 
   it("reads WebP VP8 and VP8L dimensions", async () => {
@@ -174,14 +175,27 @@ describe("readRasterMetadata", () => {
 
   it("rejects sources above the fixed pixel budget", async () => {
     const metadata = await readRasterMetadata(new Blob([png(5000, 4000)]));
-    assert.equal(MAX_SOURCE_PIXELS, 16_777_216);
-    assert.throws(() => planImageDecode(metadata), /16,777,216/);
+    assert.equal(REMOVE_BG_IMAGE_POLICY.maxSourcePixels, 16_777_216);
+    assert.throws(() => planImageDecode(metadata, REMOVE_BG_IMAGE_POLICY), /16,777,216/);
 
     const conflictingWebp = await readRasterMetadata(
       new Blob([webp(vp8x(100, 100), vp8(5000, 4000))]),
     );
     assert.deepEqual([conflictingWebp.width, conflictingWebp.height], [5000, 4000]);
-    assert.throws(() => planImageDecode(conflictingWebp), /16,777,216/);
+    assert.throws(() => planImageDecode(conflictingWebp, REMOVE_BG_IMAGE_POLICY), /16,777,216/);
+  });
+
+  it("lets OCR preserve long screenshots while removal applies its own resize policy", async () => {
+    const metadata = await readRasterMetadata(new Blob([png(8000, 2000)]));
+    const ocr = planImageDecode(metadata, OCR_IMAGE_POLICY);
+    const removal = planImageDecode(metadata, REMOVE_BG_IMAGE_POLICY);
+    assert.deepEqual([ocr.width, ocr.height, ocr.scaled], [8000, 2000, false]);
+    assert.deepEqual([removal.width, removal.height, removal.scaled], [4096, 1024, true]);
+  });
+
+  it("bounds OCR source allocation without silently reducing small text resolution", async () => {
+    const metadata = await readRasterMetadata(new Blob([png(10000, 4000)]));
+    assert.throws(() => planImageDecode(metadata, OCR_IMAGE_POLICY), /33,554,432/);
   });
 
   it("rejects unsupported or malformed input before decode", async () => {

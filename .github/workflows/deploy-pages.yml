@@ -17,6 +17,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BASE_PATH: /image-tools
+      NEXT_PUBLIC_TOOLS: ocr
+      MODEL_IDS: ppocrv6-tiny
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,12 +40,18 @@ jobs:
           python-version: "3.12"
 
       - name: Install JS dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate code
+        run: |
+          pnpm test
+          pnpm typecheck
+          pnpm lint
 
       - name: Install Python dependencies
         run: pip install pyyaml
 
-      # Pages 仅打包 Tiny，缩短 CI 与首屏下载；自建部署仍用完整 models.json + 三档权重
+      # Pages 仅下载和分发 Tiny；目录生成与文件筛选使用同一组部署选择器。
       - name: Download Tiny model
         env:
           HF_MIRROR: https://huggingface.co
@@ -50,23 +60,18 @@ jobs:
       - name: Extract Tiny charset
         run: python3 scripts/extract_charset.py --model ppocrv6-tiny
 
-      - name: Restrict catalog to Tiny for Pages
-        run: |
-          node --input-type=module -e '
-            import { readFileSync, writeFileSync } from "node:fs";
-            const path = "apps/web/public/models.json";
-            const catalog = JSON.parse(readFileSync(path, "utf8"));
-            const tiny = catalog.models.filter((m) => m.id === "ppocrv6-tiny");
-            if (tiny.length !== 1) throw new Error("ppocrv6-tiny missing from models.json");
-            writeFileSync(path, JSON.stringify({ models: tiny }, null, 2) + "\n");
-          '
-
       - name: Build static site
-        env:
-          BASE_PATH: /image-tools
-          # Pages 为演示镜像：只开放 OCR 入口（首页工具卡与 sitemap 据此过滤）
-          NEXT_PUBLIC_TOOLS: ocr
         run: pnpm build
+
+      # Missing files, stale catalogs, bad hashes or missing notices must fail release.
+      - name: Verify published model and runtime assets
+        run: pnpm check:assets
+
+      - name: Install smoke-test browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify OCR in a real Worker under the Pages base path
+        run: pnpm test:browser
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

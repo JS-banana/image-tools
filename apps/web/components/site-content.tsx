@@ -1,8 +1,10 @@
 // 首页静态介绍内容：服务端组件，必须留在 ocr-shell 的 ssr:false 边界之外，
 // 否则不会进入静态导出的 HTML，抓取器与分享卡片只能看到空页面。
 // 上传图片进入工作态后由 globals.css 的 html[data-ocr="working"] 规则隐藏。
-import catalog from "@/public/models.json";
-import { isPpocrModelEntry, parseModelCatalog } from "@img/model-runtime";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { parseOcrCatalog } from "@img/ocr/models";
+import { isToolEnabled } from "@/lib/site/tools";
 import { GITHUB_REPO_URL } from "@/lib/site";
 import { FAQ, HOW_TO_STEPS } from "@/lib/site/ocr";
 
@@ -12,7 +14,12 @@ const MODEL_NOTES: Record<string, string> = {
   "ppocrv6-small": "字典更完整，对小字号和复杂排版更稳，桌面端日常使用的推荐档位。",
   "ppocrv6-medium": "识别效果最好，代价是权重上百 MB 与更高内存占用，建议 Wi-Fi 下的桌面浏览器使用。",
 };
-const OCR_MODELS = parseModelCatalog(catalog).models.filter(isPpocrModelEntry);
+// The catalog is generated before Next starts. The same deployment selection
+// drives both static explanatory HTML and the browser's runtime catalog.
+// Disabled OCR builds have no OCR catalog and must not read one.
+const OCR_MODELS = isToolEnabled("ocr")
+  ? parseOcrCatalog(JSON.parse(readFileSync(path.join(process.cwd(), "public/catalogs/ocr.json"), "utf8"))).models
+  : [];
 
 
 function sizeMB(files: { det: { sizeBytes: number }; rec: { sizeBytes: number } }) {
@@ -23,6 +30,7 @@ const sectionTitle = "text-[20px] font-semibold tracking-tight sm:text-[22px]";
 const bodyText = "text-[14px] leading-relaxed text-muted";
 
 export default function SiteContent() {
+  if (!isToolEnabled("ocr")) return null;
   return (
     <div id="site-content" className="border-t border-border">
       <div className="mx-auto w-full max-w-[880px] px-5 py-14 sm:px-6 sm:py-20">
@@ -61,9 +69,12 @@ export default function SiteContent() {
         </section>
 
         <section className="mt-14">
-          <h2 className={sectionTitle}>三档模型怎么选</h2>
+          <h2 className={sectionTitle}>{OCR_MODELS.length > 1 ? "模型怎么选" : "当前模型"}</h2>
           <p className={`mt-4 ${bodyText}`}>
-            准确率和下载体积不可兼得，所以准备了三档权重，可以在识别过程中随时切换。下载过的模型会缓存在本机，再次使用不必重新下载。
+            {OCR_MODELS.length > 1
+              ? "当前部署提供多档权重，可按图片内容、下载体积和设备性能选择。"
+              : "当前部署仅提供以下模型，首次使用时按需下载。"}
+            下载过的模型会缓存在本机，再次使用不必重新下载。
           </p>
           <div className="mt-6 flex flex-col gap-3">
             {OCR_MODELS.map((m) => (

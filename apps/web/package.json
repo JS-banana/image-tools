@@ -4,21 +4,22 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "dev": "next dev",
-    "copy-ort": "mkdir -p public/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/ort/",
-    "build": "pnpm run copy-ort && next build",
-    "postinstall": "mkdir -p public/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.* public/ort/",
+    "dev": "pnpm run prepare-assets && next dev",
+    "copy-ort": "node ../../scripts/copy-ort.mjs",
+    "build": "pnpm run prepare-assets && next build && node --experimental-strip-types ../../scripts/model-catalogs.mjs filter-export",
+    "postinstall": "node ../../scripts/copy-ort.mjs",
     "start": "pnpm dlx serve@latest out",
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test test/*.test.mjs",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "prepare-assets": "node --experimental-strip-types ../../scripts/model-catalogs.mjs generate && node ../../scripts/copy-ort.mjs"
   },
   "dependencies": {
     "@img/model-runtime": "workspace:*",
     "@img/ocr": "workspace:*",
     "@img/remove-bg": "workspace:*",
     "next": "16.3.0",
-    "onnxruntime-web": "^1.27.0",
+    "onnxruntime-web": "1.27.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

@@ -492,3 +492,48 @@ describe("OcrRuntime dispose 收口", () => {
     assert.equal(runtime.isClosed(), true);
   });
 });
+
+describe("OcrRuntime download cancellation", () => {
+  it("switching models aborts the old download, and switching back starts a usable fresh load", async () => {
+    const signals = [];
+    let calls = 0;
+    const runtime = new OcrRuntime({
+      catalog: { models: [makeEntry(TINY, true), makeEntry(SMALL)] },
+      loadAssets: (_files, _revision, _progress, signal) => {
+        calls++; signals.push(signal);
+        if (calls <= 2) return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+        return Promise.resolve({ files: { det: new ArrayBuffer(1), rec: new ArrayBuffer(1), dict: new ArrayBuffer(1) }, source: "network" });
+      },
+      createPipeline: async () => ({ backend: "mock", run: async () => ({}), dispose: async () => {} }),
+    });
+    const first = runtime.select(TINY).catch((error) => error);
+    const second = runtime.select(SMALL).catch((error) => error);
+    const last = runtime.select(TINY);
+    await last;
+    assert.ok(await first instanceof StaleSelectionError);
+    assert.ok(await second instanceof StaleSelectionError);
+    assert.equal(signals[0].aborted, true);
+    assert.equal(signals[1].aborted, true);
+    assert.equal(signals[2].aborted, false);
+    assert.equal(runtime.state(TINY).phase, "ready");
+    await runtime.dispose();
+  });
+
+  it("dispose cancels a pending download instead of waiting for the entire model", async () => {
+    let signal;
+    let created = false;
+    const runtime = new OcrRuntime({
+      catalog: { models: [makeEntry(TINY, true)] },
+      loadAssets: (_files, _revision, _progress, current) => {
+        signal = current;
+        return new Promise((_resolve, reject) => current.addEventListener("abort", () => reject(current.reason), { once: true }));
+      },
+      createPipeline: async () => { created = true; throw new Error("unexpected"); },
+    });
+    const pending = runtime.select(TINY).catch((error) => error);
+    await runtime.dispose();
+    assert.equal(signal.aborted, true);
+    assert.ok(await pending instanceof RuntimeClosedError);
+    assert.equal(created, false);
+  });
+});

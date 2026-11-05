@@ -5,7 +5,9 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./models": "./src/models.ts",
+    "./engine": "./src/engine.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.mjs",
@@ -13,7 +15,7 @@
   },
   "dependencies": {
     "@img/model-runtime": "workspace:*",
-    "onnxruntime-web": "^1.27.0"
+    "onnxruntime-web": "1.27.0"
   },
   "devDependencies": {
     "@types/node": "^20",

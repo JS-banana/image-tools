@@ -28,6 +28,7 @@ export function ToolNav({ current }: { current: string }) {
           <Link
             key={tool.id}
             href={tool.href}
+            prefetch={false}
             className={`${cls} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink`}
           >
             {tool.navLabel}

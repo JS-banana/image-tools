@@ -30,3 +30,6 @@ export interface OcrPipeline {
   run(image: ImageData, onProgress?: ProgressFn): Promise<OcrRunResult>;
   dispose(): Promise<void>;
 }
+
+/** Host-supplied runtime asset location; no framework or deployment globals. */
+export interface OcrEngineOptions { wasmBaseURL: string }

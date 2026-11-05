@@ -1,5 +1,4 @@
-// 仅浏览器客户端（ssr:false 动态边界内）可导入本包——pipeline 模块直接 import onnxruntime-web。
-export { createPpocrPipeline } from "./pipelines/ppocr-dbnet-ctc.ts";
+// Lightweight public API: importing this entry does not evaluate ONNX Runtime.
 export {
   OcrRuntime,
   RuntimeBusyError,
@@ -12,9 +11,11 @@ export type {
   OcrRuntimeOptions,
 } from "./runtime.ts";
 export type {
+  OcrEngineOptions,
   OcrBox,
   OcrLine,
   OcrPipeline,
   OcrRunResult,
   ProgressFn,
 } from "./types.ts";
+export { supportsOcrCanvas } from "./image-canvas.ts";
