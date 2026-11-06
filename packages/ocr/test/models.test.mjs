@@ -18,6 +18,9 @@ describe("OCR model catalog", () => {
       assert.equal(model.params.dictSize, i === 0 ? 6906 : 18710);
       assert.equal(model.params.boxThresh, i === 0 ? 0.4 : 0.45);
       assert.equal(model.files.dict.url, `/models/${model.id}/dict.json`);
+      for (const [role, file] of Object.entries(model.files)) {
+        assert.equal(file.sha256, fixture().models[i].files[role].sha256);
+      }
       assert.equal(toModelSummary(model).downloadBytes, Object.values(model.files).reduce((sum, f) => sum + f.sizeBytes, 0));
     }
   });

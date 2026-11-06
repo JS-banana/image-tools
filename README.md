@@ -17,7 +17,7 @@
 
 pnpm workspaces + Turborepo monorepo：
 
-- `apps/web/` — 唯一的 Next.js 应用（静态导出；`/` 暂重定向到 `/ocr`，后续按统一站点多路由扩展）
+- `apps/web/` — 唯一的 Next.js 应用（静态导出；`/` 重定向到第一个启用工具，默认 `/ocr`）
 - `packages/model-runtime/` — 通用资产校验、下载和按工具隔离的 CacheStorage（不包含工具 schema 或 onnxruntime-web）
 - `packages/ocr/` — OCR 模型目录/schema、PP-OCR DBNet+CTC pipeline 与 `OcrRuntime`；重引擎通过 `/engine` 单独加载
 - `packages/remove-bg/` — 去背景模型目录/schema、BEN2 预处理 / alpha 后处理 / `RemoveBgRuntime`；重引擎通过 `/engine` 单独加载
@@ -65,7 +65,7 @@ python3 scripts/verify_remove_bg.py
 
 ## 部署选择与发布检查
 
-模型目录来源分别在 `packages/ocr/models.json` 与 `packages/remove-bg/models.json`，dev/build 生成 `/catalogs/ocr.json` 和 `/catalogs/remove-bg.json`。只有进入工具、实际选择/使用其模型时才加载对应权重；首页当前跳转 OCR，因此仍按 OCR 页行为准备推荐模型。
+模型目录来源分别在 `packages/ocr/models.json` 与 `packages/remove-bg/models.json`，dev/build 生成启用工具的 `/catalogs/ocr.json` 和 `/catalogs/remove-bg.json`。只有进入工具、实际选择/使用其模型时才加载对应权重；首页按注册表顺序跳转到第一个启用工具，默认仍是会准备推荐模型的 OCR 页。禁用的 OCR 路由仅显示占位页，不加载客户端或模型目录。
 
 ```bash
 BASE_PATH=/image-tools NEXT_PUBLIC_TOOLS=ocr MODEL_IDS=ppocrv6-tiny pnpm build
@@ -76,7 +76,7 @@ NEXT_PUBLIC_TOOLS=ocr MODEL_IDS=ppocrv6-tiny pnpm check:assets
 
 当前包仍以 TypeScript workspace 依赖方式使用，尚未发布 npm。继续在一个仓库验证工具、Web 和部署的一致性；独立包的 API 和发布需求稳定后再考虑拆仓。
 
-PR CI 同时验证全工具与 `/image-tools` 子路径构建，并使用 Tiny 进行真实浏览器推理、换图与导航回归；Pages 发布前检查模型资产和浏览器执行链路。浏览器 smoke 的 `BASE_PATH` 必须与构建一致。BEN2 的可选本地检查使用 `SMOKE_REMOVE_BG=1 pnpm test:browser`，常规 CI 不下载该大模型。
+PR CI 验证全工具、`/image-tools` 子路径、去背景单工具与压缩占位部署，并使用 Tiny 进行真实浏览器推理、换图与导航回归；Pages 发布前检查模型资产和浏览器执行链路。浏览器 smoke 的 `BASE_PATH`、`NEXT_PUBLIC_TOOLS` 必须与构建一致；未启用 OCR 时只检查入口与门控。BEN2 的可选本地检查使用 `SMOKE_REMOVE_BG=1 pnpm test:browser`，常规 CI 不下载该大模型。
 
 ## 许可边界
 

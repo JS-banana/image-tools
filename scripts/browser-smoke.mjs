@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Run after building apps/web/out. For Pages, use the same BASE_PATH as the build.
+// Run after building apps/web/out with the same BASE_PATH and NEXT_PUBLIC_TOOLS.
 // SMOKE_EXECUTABLE_PATH optionally selects an existing Chromium installation.
 // SMOKE_REMOVE_BG=1 additionally runs the large BEN2 model through WASM (not a quality/WebGPU gate).
 import assert from 'node:assert/strict';
@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { ENABLED_TOOLS } from '../apps/web/lib/site/tools.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, 'apps/web/out');
@@ -84,121 +85,63 @@ function step(message) {
   console.log(`[browser-smoke] ${message}`);
 }
 
-try {
-  assert(await exists(path.join(output, 'ocr.html')), 'Missing static OCR export. Run pnpm build first.');
-  const catalog = JSON.parse(await readFile(path.join(output, 'catalogs/ocr.json'), 'utf8'));
-  const tiny = catalog.models.find((model) => model.id === 'ppocrv6-tiny');
-  assert(tiny?.recommended, 'The smoke baseline requires recommended ppocrv6-tiny in the exported catalog');
-  const hasRemoval = await exists(path.join(output, 'catalogs/remove-bg.json'));
-  let removalModel;
-  if (testRemoval) {
-    assert(hasRemoval, 'SMOKE_REMOVE_BG=1 requires a build with the removal tool enabled');
-    const removalCatalog = JSON.parse(await readFile(path.join(output, 'catalogs/remove-bg.json'), 'utf8'));
-    removalModel = removalCatalog.models.find((model) => model.recommended);
-    assert(removalModel, 'Missing recommended removal model');
-    for (const file of Object.values(removalModel.files)) {
-      const filename = path.join(output, file.url.replace(/^\/+/, ''));
-      assert(await exists(filename), `Download BEN2 before optional smoke: ${filename}`);
-      assert.equal((await stat(filename)).size, file.sizeBytes, `BEN2 asset size differs from the catalog: ${filename}`);
-    }
-  }
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const url = (route) => `${origin}${basePath}${route}`;
-  browser = await chromium.launch({
-    headless: true,
-    ...(process.env.SMOKE_EXECUTABLE_PATH ? { executablePath: process.env.SMOKE_EXECUTABLE_PATH } : {}),
-    args: ['--disable-gpu', '--disable-webgl', '--disable-features=WebGPU'],
-  });
-  const context = await browser.newContext({ acceptDownloads: true });
-  context.on('response', (response) => {
-    if (response.status() >= 400 && /\/(models|ort|catalogs|_next)\//.test(new URL(response.url()).pathname)) {
-      failedAssets.push(`${response.status()} ${response.url()}`);
-    }
-  });
+async function checkDeploymentRoutes(url, hasOcr) {
+  step('deployment routes: home selects an enabled tool and disabled OCR stays a placeholder');
+  assert(ENABLED_TOOLS.length > 0, 'The deployment must enable at least one tool');
+  // Isolate preloaded OCR caches and Workers from the real-inference baseline.
+  const context = await browser.newContext();
+  const requests = [];
+  context.on('request', (request) => requests.push(new URL(request.url()).pathname));
   await context.addInitScript(() => {
-    const state = window.__imageToolsSmoke = {
-      created: 0, active: 0, maxActive: 0, workers: [], runs: [], selections: [], race: null,
-      heartbeat: { count: 0, previous: performance.now() },
-    };
-    setInterval(() => {
-      const now = performance.now();
-      const gap = now - state.heartbeat.previous;
-      state.heartbeat.previous = now;
-      state.heartbeat.count += 1;
-      for (const run of state.runs) {
-        if (!run.finished) run.maxHeartbeatGapMs = Math.max(run.maxHeartbeatGapMs, gap);
-      }
-    }, 16);
+    window.__deploymentWorkers = 0;
     const NativeWorker = window.Worker;
-    window.Worker = class ObservedWorker extends NativeWorker {
+    window.Worker = class extends NativeWorker {
       constructor(...args) {
         super(...args);
-        this.smokeId = ++state.created;
-        this.smokeClosed = false;
-        this.smokeRecord = { id: this.smokeId, name: args[1]?.name, closed: false };
-        state.workers.push(this.smokeRecord);
-        state.active += 1;
-        state.maxActive = Math.max(state.maxActive, state.active);
-        this.addEventListener('message', ({ data }) => {
-          const key = `${this.smokeId}:${data?.id}`;
-          const run = state.runs.find((item) => item.key === key);
-          if (!run) return;
-          if (data.kind === 'event' && data.name === 'run-progress') {
-            run.progress = data.payload.pct;
-            const race = state.race;
-            if (race?.armed && !race.triggered && data.payload.pct === 20) {
-              race.triggered = true;
-              race.targetRun = key;
-              const transfer = new DataTransfer();
-              transfer.items.add(race.file);
-              const input = document.querySelector('input[type="file"]');
-              input.files = transfer.files;
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          } else if (data.kind === 'result' || data.kind === 'error') {
-            run.finished = true;
-            run.heartbeats = state.heartbeat.count - run.startHeartbeat;
-            run.elapsedMs = performance.now() - run.startedAt;
-            if (data.kind === 'result') {
-              run.result = {
-                boxesFound: data.value.boxesFound,
-                backend: data.value.backend,
-                alphaLength: data.value.alpha?.length,
-                totalMs: data.value.totalMs,
-                texts: data.value.results?.map((line) => line.text),
-              };
-            } else run.error = data.error;
-            if (state.race?.targetRun === key) {
-              state.race.oldReplyAfterBlank = state.race.blankDisplayed;
-            }
-          }
-        });
-      }
-      postMessage(message, ...args) {
-        if (message?.method === 'run') {
-          state.runs.push({
-            key: `${this.smokeId}:${message.id}`,
-            width: message.payload.width, height: message.payload.height, finished: false,
-            startHeartbeat: state.heartbeat.count, startedAt: performance.now(), maxHeartbeatGapMs: 0,
-          });
-        } else if (message?.method === 'select') state.selections.push(message.payload.id);
-        return super.postMessage(message, ...args);
-      }
-      terminate() {
-        if (!this.smokeClosed) { this.smokeClosed = true; this.smokeRecord.closed = true; state.active -= 1; }
-        return super.terminate();
+        window.__deploymentWorkers += 1;
       }
     };
   });
-  page = await context.newPage();
-  page.setDefaultTimeout(timeout);
-  page.setDefaultNavigationTimeout(timeout);
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+  try {
+    const routePage = await context.newPage();
+    routePage.setDefaultTimeout(timeout);
+    routePage.on('pageerror', (error) => pageErrors.push(error.message));
+    await routePage.goto(url('/'), { waitUntil: 'networkidle' });
+    const actual = { home: routePage.url() };
+    const expected = { home: url(ENABLED_TOOLS[0].href) };
+    if (hasOcr) {
+      actual.robots = await routePage.evaluate(() => document.querySelector('meta[name="robots"]')?.content.split(/\s*,\s*/).sort() ?? null);
+      expected.robots = basePath ? ['nofollow', 'noindex'] : ['follow', 'index'];
+    }
+    if (!hasOcr) {
+      requests.length = 0;
+      await routePage.goto(url('/ocr'), { waitUntil: 'networkidle' });
+      actual.ocr = await routePage.evaluate(() => ({
+        placeholder: [...document.querySelectorAll('h1')].some((heading) => heading.textContent === 'OCR 文字识别'),
+        noindex: document.querySelector('meta[name="robots"]')?.content.split(/\s*,\s*/).includes('noindex') ?? false,
+        inputs: document.querySelectorAll('input[type="file"]').length,
+        ocrLinks: [...document.querySelectorAll('a[href]')].filter((link) => new URL(link.href).pathname === location.pathname).length,
+        staticContent: document.querySelector('#site-content') !== null,
+        toolSchemas: [...document.querySelectorAll('script[type="application/ld+json"]')]
+          .flatMap((script) => {
+            const data = JSON.parse(script.textContent);
+            return data['@graph'] ?? [data];
+          })
+          .filter((entry) => entry['@type'] === 'WebApplication' || entry['@type'] === 'FAQPage')
+          .map((entry) => entry['@type']),
+        workers: window.__deploymentWorkers,
+      }));
+      actual.ocr.requests = requests.filter((name) => /\/catalogs\/ocr\.json$|\/models\/ppocr|\/ort\//.test(name));
+      expected.ocr = { placeholder: true, noindex: true, inputs: 0, ocrLinks: 0, staticContent: false, toolSchemas: [], workers: 0, requests: [] };
+    }
+    assert.deepEqual(actual, expected, 'The exported routes do not respect the deployment tool selection');
+  } finally {
+    await context.close();
+    requestedPaths.length = 0;
+  }
+}
 
+async function runOcrSmoke({ tiny, hasRemoval, removalModel, url }) {
   if (hasRemoval) {
     step('empty removal page: no model/runtime requests or Workers');
     await page.goto(url('/remove-bg'), { waitUntil: 'networkidle' });
@@ -395,7 +338,185 @@ try {
     return !modelId || allowedModelDirectories.has(modelId);
   }), 'An unselected model was fetched');
   assert(requestedPaths.some((name) => name.endsWith('.wasm')), 'No real WASM runtime was fetched');
+  await checkLegacyCacheUpgrade(url, tiny);
   console.log(`[browser-smoke] PASS ${JSON.stringify({ basePath, mode: hasRemoval ? 'all-tools' : 'ocr-only', backend: firstRun.result.backend, ...(removalEvidence ? { removal: removalEvidence } : {}), ...metrics })}`);
+}
+
+async function checkLegacyCacheUpgrade(url, tiny) {
+  step('legacy cache: reuse Tiny across revisions and base paths without refetching model bytes');
+  const context = await browser.newContext();
+  const requests = [];
+  const errors = [];
+  context.on('request', (request) => requests.push(new URL(request.url()).pathname));
+  try {
+    const upgradePage = await context.newPage();
+    upgradePage.setDefaultTimeout(timeout);
+    upgradePage.on('pageerror', (error) => errors.push(error.message));
+    await upgradePage.goto(url('/compress'), { waitUntil: 'networkidle' });
+    const assets = Object.values(tiny.files).map((file) => ({
+      logicalURL: file.url, fetchURL: url(file.url), legacyKey: `${file.url}?rev=2026-08-07-dirs`,
+      currentKey: `${url(file.url)}?rev=${encodeURIComponent(tiny.revision)}`,
+    }));
+    const untouched = '/models/ben2-base/model.onnx?rev=dfdc25f421f';
+    await upgradePage.evaluate(async ({ assets, untouched }) => {
+      const cache = await caches.open('ocr-models-v1');
+      for (const asset of assets) {
+        const response = await fetch(asset.fetchURL);
+        if (!response.ok) throw new Error(`Cannot prepare old cache: ${asset.fetchURL}`);
+        // Reproduce the old loader: root cache key even under /image-tools.
+        await cache.put(asset.legacyKey, new Response(await response.arrayBuffer()));
+      }
+      await cache.put(untouched, new Response(new Uint8Array([1])));
+    }, { assets, untouched });
+    requests.length = 0;
+    await upgradePage.goto(url('/ocr'), { waitUntil: 'domcontentloaded' });
+    await upgradePage.getByText('模型已就绪，上传图片即可识别', { exact: true }).waitFor();
+    await upgradePage.locator('input[type="file"]').setInputFiles(path.join(root, 'scripts/assets/test_input.png'));
+    await upgradePage.getByRole('button', { name: '下载 .txt', exact: true }).waitFor();
+    const text = await upgradePage.locator('section')
+      .filter({ has: upgradePage.getByRole('heading', { name: '识别结果', exact: true }) }).innerText();
+    for (const fragment of expectedText) assert(text.includes(fragment), `Upgraded OCR output is missing ${fragment}`);
+    assert.deepEqual(requests.filter((name) => /\/models\//.test(name)), [], 'Upgrade re-fetched cached model bytes');
+    const keys = await upgradePage.evaluate(async () => ({
+      legacy: (await (await caches.open('ocr-models-v1')).keys()).map((request) => request.url),
+      current: (await (await caches.open('image-tools-ocr-v1')).keys()).map((request) => request.url),
+    }));
+    assert.deepEqual(keys.current.sort(), assets.map((asset) => asset.currentKey).sort(), 'Upgrade did not persist current revision keys');
+    assert.deepEqual(keys.legacy, [new URL(untouched, url('/')).href], 'Upgrade deleted another tool or retained copied model bytes');
+    assert.deepEqual(errors, [], 'Cache upgrade raised a browser exception');
+  } finally {
+    await context.close();
+  }
+}
+
+try {
+  assert(await exists(path.join(output, 'ocr.html')), 'Missing static OCR export. Run pnpm build first.');
+  const hasOcr = await exists(path.join(output, 'catalogs/ocr.json'));
+  assert.equal(ENABLED_TOOLS.some((tool) => tool.id === 'ocr'), hasOcr, 'Run smoke with the same NEXT_PUBLIC_TOOLS as the build');
+  let tiny;
+  if (hasOcr) {
+    const catalog = JSON.parse(await readFile(path.join(output, 'catalogs/ocr.json'), 'utf8'));
+    tiny = catalog.models.find((model) => model.id === 'ppocrv6-tiny');
+    assert(tiny?.recommended, 'The smoke baseline requires recommended ppocrv6-tiny in the exported catalog');
+  }
+  const hasRemoval = await exists(path.join(output, 'catalogs/remove-bg.json'));
+  let removalModel;
+  if (testRemoval) {
+    assert(hasOcr, 'SMOKE_REMOVE_BG=1 requires OCR for the cross-tool inference baseline');
+    assert(hasRemoval, 'SMOKE_REMOVE_BG=1 requires a build with the removal tool enabled');
+    const removalCatalog = JSON.parse(await readFile(path.join(output, 'catalogs/remove-bg.json'), 'utf8'));
+    removalModel = removalCatalog.models.find((model) => model.recommended);
+    assert(removalModel, 'Missing recommended removal model');
+    for (const file of Object.values(removalModel.files)) {
+      const filename = path.join(output, file.url.replace(/^\/+/, ''));
+      assert(await exists(filename), `Download BEN2 before optional smoke: ${filename}`);
+      assert.equal((await stat(filename)).size, file.sizeBytes, `BEN2 asset size differs from the catalog: ${filename}`);
+    }
+  }
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const url = (route) => `${origin}${basePath}${route}`;
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.SMOKE_EXECUTABLE_PATH ? { executablePath: process.env.SMOKE_EXECUTABLE_PATH } : {}),
+    args: ['--disable-gpu', '--disable-webgl', '--disable-features=WebGPU'],
+  });
+  const context = await browser.newContext({ acceptDownloads: true });
+  context.on('response', (response) => {
+    if (response.status() >= 400 && /\/(models|ort|catalogs|_next)\//.test(new URL(response.url()).pathname)) {
+      failedAssets.push(`${response.status()} ${response.url()}`);
+    }
+  });
+  await context.addInitScript(() => {
+    const state = window.__imageToolsSmoke = {
+      created: 0, active: 0, maxActive: 0, workers: [], runs: [], selections: [], race: null,
+      heartbeat: { count: 0, previous: performance.now() },
+    };
+    setInterval(() => {
+      const now = performance.now();
+      const gap = now - state.heartbeat.previous;
+      state.heartbeat.previous = now;
+      state.heartbeat.count += 1;
+      for (const run of state.runs) {
+        if (!run.finished) run.maxHeartbeatGapMs = Math.max(run.maxHeartbeatGapMs, gap);
+      }
+    }, 16);
+    const NativeWorker = window.Worker;
+    window.Worker = class ObservedWorker extends NativeWorker {
+      constructor(...args) {
+        super(...args);
+        this.smokeId = ++state.created;
+        this.smokeClosed = false;
+        this.smokeRecord = { id: this.smokeId, name: args[1]?.name, closed: false };
+        state.workers.push(this.smokeRecord);
+        state.active += 1;
+        state.maxActive = Math.max(state.maxActive, state.active);
+        this.addEventListener('message', ({ data }) => {
+          const key = `${this.smokeId}:${data?.id}`;
+          const run = state.runs.find((item) => item.key === key);
+          if (!run) return;
+          if (data.kind === 'event' && data.name === 'run-progress') {
+            run.progress = data.payload.pct;
+            const race = state.race;
+            if (race?.armed && !race.triggered && data.payload.pct === 20) {
+              race.triggered = true;
+              race.targetRun = key;
+              const transfer = new DataTransfer();
+              transfer.items.add(race.file);
+              const input = document.querySelector('input[type="file"]');
+              input.files = transfer.files;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } else if (data.kind === 'result' || data.kind === 'error') {
+            run.finished = true;
+            run.heartbeats = state.heartbeat.count - run.startHeartbeat;
+            run.elapsedMs = performance.now() - run.startedAt;
+            if (data.kind === 'result') {
+              run.result = {
+                boxesFound: data.value.boxesFound,
+                backend: data.value.backend,
+                alphaLength: data.value.alpha?.length,
+                totalMs: data.value.totalMs,
+                texts: data.value.results?.map((line) => line.text),
+              };
+            } else run.error = data.error;
+            if (state.race?.targetRun === key) {
+              state.race.oldReplyAfterBlank = state.race.blankDisplayed;
+            }
+          }
+        });
+      }
+      postMessage(message, ...args) {
+        if (message?.method === 'run') {
+          state.runs.push({
+            key: `${this.smokeId}:${message.id}`,
+            width: message.payload.width, height: message.payload.height, finished: false,
+            startHeartbeat: state.heartbeat.count, startedAt: performance.now(), maxHeartbeatGapMs: 0,
+          });
+        } else if (message?.method === 'select') state.selections.push(message.payload.id);
+        return super.postMessage(message, ...args);
+      }
+      terminate() {
+        if (!this.smokeClosed) { this.smokeClosed = true; this.smokeRecord.closed = true; state.active -= 1; }
+        return super.terminate();
+      }
+    };
+  });
+  page = await context.newPage();
+  page.setDefaultTimeout(timeout);
+  page.setDefaultNavigationTimeout(timeout);
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await checkDeploymentRoutes(url, hasOcr);
+  if (hasOcr) await runOcrSmoke({ tiny, hasRemoval, removalModel, url });
+  else {
+    assert.deepEqual(pageErrors, [], 'Browser raised an uncaught exception');
+    assert.deepEqual(failedAssets, [], 'Static assets failed to load');
+    console.log(`[browser-smoke] PASS ${JSON.stringify({ basePath, mode: 'deployment-only', tools: ENABLED_TOOLS.map((tool) => tool.id) })}`);
+  }
 } catch (error) {
   console.error(`[browser-smoke] FAIL at ${stage}:`, error);
   if (page && !page.isClosed()) {

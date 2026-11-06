@@ -56,3 +56,16 @@ jobs:
         run: |
           pnpm check:assets
           pnpm test:browser
+      - name: Check a removal-only deployment without OCR
+        env:
+          BASE_PATH: /image-tools
+          NEXT_PUBLIC_TOOLS: remove-bg
+        run: |
+          pnpm build
+          pnpm test:browser
+      - name: Check a placeholder-only deployment
+        env:
+          NEXT_PUBLIC_TOOLS: compress
+        run: |
+          pnpm build
+          pnpm test:browser

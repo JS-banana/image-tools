@@ -14,7 +14,7 @@
     "catalogs": "node --experimental-strip-types scripts/model-catalogs.mjs generate",
     "check:assets": "node --experimental-strip-types scripts/model-catalogs.mjs check",
     "test:scripts": "node --experimental-strip-types --test scripts/test/*.test.mjs",
-    "test:browser": "node scripts/browser-smoke.mjs"
+    "test:browser": "node --experimental-strip-types scripts/browser-smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",

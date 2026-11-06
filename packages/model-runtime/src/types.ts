@@ -1,5 +1,10 @@
 /** A logical asset URL; deployment resolution belongs to the host. */
-export interface AssetFile { url: string; sizeBytes: number }
+export interface AssetFile {
+  url: string;
+  sizeBytes: number;
+  /** Optional content identity used when promoting bytes from a legacy cache. */
+  sha256?: string;
+}
 
 /** Structural metadata only: this package has no knowledge of model pipelines. */
 export interface AssetModelEntry {

@@ -14,6 +14,7 @@ describe("remove-background model catalog", () => {
     assert.equal(models[0].recommended, true);
     assert.equal(models[0].files.model.url, "/models/ben2-base/model.onnx");
     assert.equal(models[0].files.model.sizeBytes, 219121675);
+    assert.equal(models[0].files.model.sha256, fixture().models[0].files.model.sha256);
     assert.equal(toModelSummary(models[0]).downloadBytes, 219121675);
     assert.ok(isBen2RemoveBgModelEntry(models[0]));
     assert.equal(isBen2RemoveBgModelEntry({ pipeline: "ppocr-dbnet-ctc" }), false);

@@ -21,7 +21,9 @@ installWorker(async (request) => {
     if (!supportsOcrCanvas()) throw new Error("当前浏览器不支持后台图片处理，请更新浏览器后重试");
     const payload = request.payload as { catalog: unknown; deployment: EngineDeployment };
     const catalog = parseOcrCatalog(payload.catalog);
-    const store = createAssetStore({ namespace: "image-tools-ocr-v1", baseURL: payload.deployment.assetBaseURL });
+    const store = createAssetStore({
+      namespace: "image-tools-ocr-v1", legacyNamespace: "ocr-models-v1", baseURL: payload.deployment.assetBaseURL,
+    });
     const keys = new Set(catalog.models.flatMap((model) =>
       Object.values(model.files).map((file) => store.cacheKey(file.url, model.revision)),
     ));

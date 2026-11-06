@@ -85,6 +85,16 @@ class MemoryCache {
     this.deleted.push(key);
     return this.store.delete(key);
   }
+
+  async keys(url, options = {}) {
+    return [...this.store.keys()].filter((key) => {
+      if (!url) return true;
+      const candidate = new URL(key, "https://example.test");
+      const requested = new URL(url, "https://example.test");
+      return candidate.origin === requested.origin && candidate.pathname === requested.pathname &&
+        (options.ignoreSearch || candidate.search === requested.search);
+    });
+  }
 }
 
 function installCache(cache) {
@@ -372,5 +382,94 @@ describe("tool-owned Worker asset stores", () => {
     globalThis.fetch = async () => { called = true; throw new Error("unexpected"); };
     await assert.rejects(loadAssets({ a: { url: "/models/a", sizeBytes: 1 } }, "r", undefined, controller.signal), { name: "AbortError" });
     assert.equal(called, false);
+  });
+});
+
+describe("legacy model cache upgrades", () => {
+  afterEach(restoreGlobals);
+
+  const oldKey = assetCacheKey(FILE_A.url, "old-revision");
+  const otherKey = assetCacheKey("/models/other-tool/model.onnx", "other-revision");
+  const file = { ...FILE_A, sha256: "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a" };
+
+  function setup() {
+    const legacy = new MemoryCache();
+    const current = new MemoryCache();
+    legacy.store.set(oldKey, BYTES_A.buffer.slice(0));
+    legacy.store.set(otherKey, BYTES_B.buffer.slice(0));
+    globalThis.caches = { open: async (name) => name === "legacy" ? legacy : current };
+    const store = createAssetStore({
+      namespace: "current", legacyNamespace: "legacy", baseURL: "https://example.test/image-tools/",
+    });
+    return { legacy, current, store, key: store.cacheKey(file.url, REV) };
+  }
+
+  it("reuses verified legacy bytes across namespace, revision and deployment-prefix changes", async () => {
+    const { legacy, current, store, key } = setup();
+    const calls = installFetch(() => { throw new Error("cached upgrade must work offline"); });
+    const result = await store.loadAssets({ model: file }, REV);
+    assert.equal(result.source, "cache");
+    assert.deepEqual(new Uint8Array(result.files.model), BYTES_A);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(new Uint8Array(current.store.get(key)), BYTES_A);
+    assert.equal(legacy.store.has(oldKey), false);
+    assert.equal(legacy.store.has(otherKey), true, "the other tool's legacy cache must survive");
+  });
+
+  it("does not promote same-size legacy bytes with a different digest", async () => {
+    const { legacy, store } = setup();
+    legacy.store.set(oldKey, new Uint8Array([4, 3, 2, 1]).buffer);
+    const calls = installFetch(() => okStream(BYTES_A));
+    const result = await store.loadAssets({ model: file }, REV);
+    assert.equal(result.source, "network");
+    assert.equal(calls.length, 1);
+    assert.equal(legacy.store.has(oldKey), true, "a different model revision must not be deleted");
+  });
+
+  it("retains usable legacy bytes if promotion exceeds the cache quota", async () => {
+    const { legacy, current, store } = setup();
+    current.putError = new Error("quota exceeded");
+    installFetch(() => { throw new Error("legacy bytes must remain usable"); });
+    const result = await store.loadAssets({ model: file }, REV);
+    assert.equal(result.source, "cache");
+    assert.deepEqual(new Uint8Array(result.files.model), BYTES_A);
+    assert.equal(legacy.store.has(oldKey), true);
+    assert.equal(current.store.size, 0);
+  });
+
+  it("requires an expected digest before reusing an unknown legacy revision", async () => {
+    const { legacy, store } = setup();
+    const calls = installFetch(() => okStream(BYTES_A));
+    const result = await store.loadAssets({ model: FILE_A }, REV);
+    assert.equal(result.source, "network");
+    assert.equal(calls.length, 1);
+    assert.equal(legacy.store.has(oldKey), true);
+  });
+
+  it("finds matching bytes among old revisions without deleting a different revision", async () => {
+    const { legacy, store } = setup();
+    legacy.store.set(oldKey, new Uint8Array([4, 3, 2, 1]).buffer);
+    const matchingKey = assetCacheKey(FILE_A.url, "matching-revision");
+    legacy.store.set(matchingKey, BYTES_A.buffer.slice(0));
+    installFetch(() => { throw new Error("matching legacy revision must not fetch"); });
+    const result = await store.loadAssets({ model: file }, REV);
+    assert.equal(result.source, "cache");
+    assert.equal(legacy.store.has(oldKey), true);
+    assert.equal(legacy.store.has(matchingKey), false);
+  });
+
+  it("cancels a legacy read without promoting or deleting its bytes", async () => {
+    const { legacy, current, store } = setup();
+    const controller = new AbortController();
+    const match = legacy.match.bind(legacy);
+    legacy.match = async (key) => {
+      const response = await match(key);
+      controller.abort(new DOMException("cancelled", "AbortError"));
+      return response;
+    };
+    installFetch(() => { throw new Error("cancelled upgrade must not fetch"); });
+    await assert.rejects(store.loadAssets({ model: file }, REV, undefined, controller.signal), { name: "AbortError" });
+    assert.equal(legacy.store.has(oldKey), true);
+    assert.equal(current.putCount, 0);
   });
 });

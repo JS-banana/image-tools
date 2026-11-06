@@ -22,6 +22,13 @@ describe("generic catalog and assets", () => {
   it("accepts canonical asset paths without a host-specific directory", () => {
     assert.deepEqual(parseAssetFile({ url: "/assets/a.bin", sizeBytes: 2 }, "files.one", "a"), { url: "/assets/a.bin", sizeBytes: 2 });
   });
+  it("preserves a declared content digest and rejects malformed digests", () => {
+    const file = { url: "/assets/a.bin", sizeBytes: 2, sha256: "a".repeat(64) };
+    assert.deepEqual(parseAssetFile(file, "files.one", "a"), file);
+    for (const sha256 of [null, 42, "", "a".repeat(63), "A".repeat(64), "g".repeat(64)]) {
+      assert.throws(() => parseAssetFile({ ...file, sha256 }, "files.one", "a"), /files\.one\.sha256/);
+    }
+  });
   it("rejects unsafe logical paths before URL normalization", () => {
     for (const url of ["/models/../secret", "/models/%2e%2e/secret", "/models/%2F../secret", "/models//a", "/models/a?x=1", "/models/a#frag", "https://elsewhere/a", "//elsewhere/a", "/\\elsewhere/a", "models/a"]) {
       assert.throws(() => parseAssetFile({ url, sizeBytes: 1 }, "files.one", "a"), ManifestError, url);

@@ -1,6 +1,6 @@
 // 未上线工具的占位页：纯服务端、零工具代码，文案取自注册表。
 import Link from "next/link";
-import { TOOLS } from "@/lib/site/tools";
+import { TOOLS, isToolEnabled } from "@/lib/site/tools";
 import { SiteHeader } from "@/components/site-header";
 
 export function ToolPlaceholder({ toolId }: { toolId: string }) {
@@ -19,12 +19,14 @@ export function ToolPlaceholder({ toolId }: { toolId: string }) {
         <p className="mt-2 text-[13px] text-muted">
           功能开发中，敬请期待——上线后同样 100% 在你自己的浏览器里运行，图片不上传。
         </p>
-        <Link
-          href="/ocr"
-          className="mt-8 inline-flex min-h-11 items-center rounded-[8px] border border-border bg-panel px-4 py-2.5 text-[13px] font-medium text-text transition-[border-color,scale] duration-150 active:scale-[0.98] [@media(hover:hover)]:hover:border-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink lg:min-h-0"
-        >
-          先用 OCR 文字识别
-        </Link>
+        {isToolEnabled("ocr") && (
+          <Link
+            href="/ocr"
+            className="mt-8 inline-flex min-h-11 items-center rounded-[8px] border border-border bg-panel px-4 py-2.5 text-[13px] font-medium text-text transition-[border-color,scale] duration-150 active:scale-[0.98] [@media(hover:hover)]:hover:border-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink lg:min-h-0"
+          >
+            先用 OCR 文字识别
+          </Link>
+        )}
       </main>
     </div>
   );

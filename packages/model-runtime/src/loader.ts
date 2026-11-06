@@ -16,6 +16,8 @@ export type AssetLoader = (
 export interface AssetStoreOptions {
   /** Owned by one tool, e.g. image-tools-ocr-v1; pruning never touches other caches. */
   namespace: string;
+  /** Reuse matching bytes from an older shared cache without pruning its other assets. */
+  legacyNamespace?: string;
   /** Site/CDN base including deployment path, e.g. https://host/image-tools/. */
   baseURL?: string;
   /** Overrides baseURL; receives the catalog's logical URL without revision. */
@@ -105,12 +107,60 @@ async function fetchNetwork(
   return bytes.buffer;
 }
 
+async function readLegacyAsset(
+  file: AssetFile,
+  key: string,
+  cache: Cache | null,
+  namespace: string | undefined,
+  signal: AbortSignal,
+): Promise<ArrayBuffer | null> {
+  if (!namespace || !file.sha256 || !globalThis.crypto?.subtle) return null;
+  const legacy = await getCache(namespace);
+  checkAbort(signal);
+  if (!legacy) return null;
+  try {
+    // The old loader added basePath only to fetch URLs. Its cache keys used the
+    // logical root path, so do not resolve this lookup against the new baseURL.
+    const candidates = await legacy.keys(file.url, { ignoreSearch: true });
+    checkAbort(signal);
+    for (const request of candidates) {
+      const hit = await legacy.match(request);
+      checkAbort(signal);
+      if (!hit) continue;
+      const buffer = await hit.arrayBuffer();
+      checkAbort(signal);
+      if (buffer.byteLength !== file.sizeBytes) continue;
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", buffer);
+      checkAbort(signal);
+      const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      if (actual !== file.sha256) continue;
+      if (cache) {
+        let copied = false;
+        try { await cache.put(key, new Response(buffer)); copied = true; }
+        catch (error) { warn("旧缓存迁移写入失败，保留原条目", error); }
+        checkAbort(signal);
+        if (copied) {
+          try { await legacy.delete(request); }
+          catch (error) { warn("旧缓存条目清理失败", error); }
+          checkAbort(signal);
+        }
+      }
+      return buffer;
+    }
+  } catch (error) {
+    checkAbort(signal);
+    warn("旧缓存读取失败，改用网络", error);
+  }
+  return null;
+}
+
 async function loadOne(
   file: AssetFile,
   key: string,
   cache: Cache | null,
   signal: AbortSignal,
   onBytes: (loaded: number, fromCache: boolean) => void,
+  legacyNamespace?: string,
 ): Promise<{ buffer: ArrayBuffer; fromCache: boolean }> {
   checkAbort(signal);
   if (cache) {
@@ -132,6 +182,11 @@ async function loadOne(
       checkAbort(signal);
       warn("缓存读取失败，改用网络", error);
     }
+  }
+  const legacy = await readLegacyAsset(file, key, cache, legacyNamespace, signal);
+  if (legacy) {
+    onBytes(legacy.byteLength, true);
+    return { buffer: legacy, fromCache: true };
   }
   return { buffer: await fetchNetwork(file, key, cache, signal, onBytes), fromCache: false };
 }
@@ -162,7 +217,7 @@ export function createAssetStore(options: AssetStoreOptions): AssetStore {
             loadedPerKey.set(key, loaded);
             const loadedBytes = entries.reduce((sum, [name, asset]) => sum + Math.min(loadedPerKey.get(name) ?? 0, asset.sizeBytes), 0);
             onProgress?.({ pct: totalBytes ? Math.min(100, loadedBytes / totalBytes * 100) : null, label: fromCache ? "读取本机缓存" : `下载 ${key}`, fromCache, loadedBytes, totalBytes });
-          });
+          }, options.legacyNamespace);
           return [key, result] as const;
         } catch (error) {
           if (!failed) { failed = true; firstError = error; controller.abort(error); }

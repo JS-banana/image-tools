@@ -138,7 +138,11 @@ export function parseAssetFile(
   if (!Number.isSafeInteger(sizeBytes)) {
     fail(`${path}.sizeBytes`, "必须是正整数", modelId);
   }
-  return { url, sizeBytes };
+  const sha256 = raw.sha256;
+  if (sha256 !== undefined && (typeof sha256 !== "string" || !/^[a-f0-9]{64}$/.test(sha256))) {
+    fail(`${path}.sha256`, "必须是 64 位小写十六进制 SHA-256", modelId);
+  }
+  return { url, sizeBytes, ...(sha256 === undefined ? {} : { sha256 }) };
 }
 
 /** 解析并完整校验 catalog；任何结构/参数错误在此抛出（早于资产下载） */

@@ -23,7 +23,9 @@ installWorker(async (request) => {
     const catalog = parseRemoveBgCatalog(payload.catalog);
     const entry = catalog.models.find((model) => model.id === payload.modelId);
     if (!entry) throw new Error(`未知去背景模型: ${payload.modelId}`);
-    const store = createAssetStore({ namespace: "image-tools-remove-bg-v1", baseURL: payload.deployment.assetBaseURL });
+    const store = createAssetStore({
+      namespace: "image-tools-remove-bg-v1", legacyNamespace: "ocr-models-v1", baseURL: payload.deployment.assetBaseURL,
+    });
     const keys = new Set(catalog.models.flatMap((model) =>
       Object.values(model.files).map((file) => store.cacheKey(file.url, model.revision)),
     ));
