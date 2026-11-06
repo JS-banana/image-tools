@@ -13,6 +13,7 @@ next-env.d.ts
 # 模型与生成资产（scripts/download_models.sh 和 postinstall 可重新生成）
 models/
 apps/web/public/ort/
+apps/web/public/catalogs/
 scripts/inference_rec.yml
 scripts/README_rec.md
 # 本地去背景校准图只作为资格实验输入，不进入版本库
@@ -33,7 +34,8 @@ CLAUDE.md
 skills-lock.json
 
 # 研究文档（本地参考资料）
-docs/
+docs/*
+!docs/architecture.md
 
 # 系统与杂项
 .DS_Store

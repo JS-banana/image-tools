@@ -1,12 +1,7 @@
 // RemoveBgRuntime：单模型生命周期。不导入 onnxruntime-web，不暴露 Session。
 
-import {
-  isBen2RemoveBgModelEntry,
-  loadAssets as defaultLoadAssets,
-  type AssetFile,
-  type Ben2RemoveBgModelEntry,
-  type ModelLoadProgress,
-} from "@img/model-runtime";
+import { createAssetStore, type AssetLoader, type ModelLoadProgress } from "@img/model-runtime";
+import { isBen2RemoveBgModelEntry, type Ben2RemoveBgModelEntry } from "./models.ts";
 import {
   RemoveBgError,
   RuntimeClosedError,
@@ -19,14 +14,7 @@ import {
   type RemoveBgRunResult,
 } from "./types.ts";
 
-export type LoadAssetsFn = (
-  files: Readonly<Record<string, AssetFile>>,
-  revision: string,
-  onProgress?: (progress: ModelLoadProgress) => void,
-) => Promise<{
-  files: Record<string, ArrayBuffer>;
-  source: "cache" | "network" | "mixed";
-}>;
+export type LoadAssetsFn = AssetLoader;
 
 export type CreatePipelineFn = (
   entry: Ben2RemoveBgModelEntry,
@@ -39,6 +27,8 @@ export interface RemoveBgRuntimeOptions {
   backend: RemoveBgBackend;
   loadAssets?: LoadAssetsFn;
   createPipeline?: CreatePipelineFn;
+  /** Required when using the default pipeline factory. */
+  wasmBaseURL?: string;
 }
 
 type Phase = "unloaded" | "loading" | "ready" | "failed";
@@ -56,12 +46,6 @@ async function safeDispose(pipeline: RemoveBgPipeline): Promise<void> {
   }
 }
 
-// Node 测试会直接导入 runtime；静态导入会在 Node 中提前求值浏览器专用 ORT 模块。
-const defaultCreatePipeline: CreatePipelineFn = async (entry, model, backend) => {
-  const { createBen2Pipeline } = await import("./pipeline.ts");
-  return createBen2Pipeline(entry, model, backend);
-};
-
 export class RemoveBgRuntime {
   private readonly entry: Ben2RemoveBgModelEntry;
   private readonly backend: RemoveBgBackend;
@@ -71,6 +55,7 @@ export class RemoveBgRuntime {
   private phase: Phase = "unloaded";
   private pipeline: RemoveBgPipeline | null = null;
   private loadInflight: Promise<void> | null = null;
+  private loadController: AbortController | null = null;
   private runGeneration = 0;
   private runChain: Promise<void> = Promise.resolve();
   private closed = false;
@@ -85,8 +70,12 @@ export class RemoveBgRuntime {
     }
     this.entry = opts.entry;
     this.backend = opts.backend;
-    this.loadAssetsFn = opts.loadAssets ?? defaultLoadAssets;
-    this.createPipelineFn = opts.createPipeline ?? defaultCreatePipeline;
+    this.loadAssetsFn = opts.loadAssets ?? createAssetStore({ namespace: "image-tools-remove-bg-v1" }).loadAssets;
+    this.createPipelineFn = opts.createPipeline ?? (async (entry, model, backend) => {
+      if (!opts.wasmBaseURL) throw new RemoveBgError("使用默认 factory 时必须提供 wasmBaseURL");
+      const { createBen2Pipeline } = await import("./pipeline.ts");
+      return createBen2Pipeline(entry, model, backend, { wasmBaseURL: opts.wasmBaseURL });
+    });
   }
 
   /**
@@ -97,14 +86,16 @@ export class RemoveBgRuntime {
     if (this.phase === "ready" && this.pipeline) return Promise.resolve();
     if (this.loadInflight) return this.loadInflight;
 
-    const p = this.doLoad(onProgress);
+    const controller = new AbortController();
+    this.loadController = controller;
+    const p = this.doLoad(controller.signal, onProgress);
     this.loadInflight = p;
     p.then(
       () => {
-        if (this.loadInflight === p) this.loadInflight = null;
+        if (this.loadInflight === p) { this.loadInflight = null; this.loadController = null; }
       },
       () => {
-        if (this.loadInflight === p) this.loadInflight = null;
+        if (this.loadInflight === p) { this.loadInflight = null; this.loadController = null; }
       },
     );
     return p;
@@ -154,6 +145,7 @@ export class RemoveBgRuntime {
   }
 
   private async doLoad(
+    signal: AbortSignal,
     onProgress?: (progress: ModelLoadProgress) => void,
   ): Promise<void> {
     this.phase = "loading";
@@ -162,7 +154,8 @@ export class RemoveBgRuntime {
       const loaded = await this.loadAssetsFn(
         { model: this.entry.files.model },
         this.entry.revision,
-        onProgress,
+        (progress) => { if (!signal.aborted && !this.closed) onProgress?.(progress); },
+        signal,
       );
       if (this.closed) throw new RuntimeClosedError();
       model = loaded.files.model;
@@ -194,6 +187,7 @@ export class RemoveBgRuntime {
   private async doDispose(): Promise<void> {
     this.closed = true;
     this.runGeneration++;
+    this.loadController?.abort(new RuntimeClosedError());
     await Promise.allSettled([this.loadInflight, this.runChain]);
     const pipeline = this.pipeline;
     this.pipeline = null;

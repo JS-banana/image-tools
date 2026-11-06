@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      # The smoke test needs only Tiny (~6 MB), never BEN2 or the larger OCR models.
+      - name: Prepare Tiny smoke-test weights
+        env:
+          HF_MIRROR: https://huggingface.co
+        run: |
+          bash scripts/download_models.sh --model ppocrv6-tiny
+          python3 scripts/extract_charset.py --model ppocrv6-tiny
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Build all tool routes
+        run: pnpm build
+      - name: Check real Worker inference and navigation
+        run: pnpm test:browser
+      - name: Build the Pages selection with a base path
+        env:
+          BASE_PATH: /image-tools
+          NEXT_PUBLIC_TOOLS: ocr
+          MODEL_IDS: ppocrv6-tiny
+        run: pnpm build
+      - name: Check Pages assets and real Worker URLs
+        env:
+          BASE_PATH: /image-tools
+          NEXT_PUBLIC_TOOLS: ocr
+          MODEL_IDS: ppocrv6-tiny
+        run: |
+          pnpm check:assets
+          pnpm test:browser
+      - name: Check a removal-only deployment without OCR
+        env:
+          BASE_PATH: /image-tools
+          NEXT_PUBLIC_TOOLS: remove-bg
+        run: |
+          pnpm build
+          pnpm test:browser
+      - name: Check a placeholder-only deployment
+        env:
+          NEXT_PUBLIC_TOOLS: compress
+        run: |
+          pnpm build
+          pnpm test:browser

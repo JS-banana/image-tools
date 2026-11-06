@@ -2,8 +2,16 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["out/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "out/**"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "public/models/**"
+      ]
     },
     "dev": {
       "persistent": true,
@@ -12,5 +20,15 @@
     "lint": {},
     "test": {},
     "typecheck": {}
-  }
+  },
+  "globalEnv": [
+    "BASE_PATH",
+    "NEXT_PUBLIC_TOOLS",
+    "MODEL_IDS"
+  ],
+  "globalDependencies": [
+    "scripts/model-catalogs.mjs",
+    "scripts/copy-ort.mjs",
+    "packages/*/models.json"
+  ]
 }

@@ -9,10 +9,15 @@
     "build": "turbo run build",
     "start": "pnpm --filter @img/web start",
     "lint": "turbo run lint",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "test": "pnpm run test:scripts && turbo run test",
+    "typecheck": "turbo run typecheck",
+    "catalogs": "node --experimental-strip-types scripts/model-catalogs.mjs generate",
+    "check:assets": "node --experimental-strip-types scripts/model-catalogs.mjs check",
+    "test:scripts": "node --experimental-strip-types --test scripts/test/*.test.mjs",
+    "test:browser": "node --experimental-strip-types scripts/browser-smoke.mjs"
   },
   "devDependencies": {
+    "playwright": "1.62.1",
     "turbo": "^2.10.11"
   }
 }

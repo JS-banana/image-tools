@@ -18,7 +18,7 @@ import onnxruntime as ort
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST_PATH = ROOT / "apps" / "web" / "public" / "models.json"
+MANIFEST_PATH = ROOT / "packages" / "ocr" / "models.json"
 
 DET_MEAN = [0.485, 0.456, 0.406]
 DET_STD = [0.229, 0.224, 0.225]
@@ -108,11 +108,11 @@ def load_manifest_entry(model_id: str) -> dict:
     raw = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     models = raw.get("models")
     if not isinstance(models, list) or not models:
-        raise SystemExit("models.json: models 必须是非空数组")
+        raise SystemExit("packages/ocr/models.json: models 必须是非空数组")
     for m in models:
         if isinstance(m, dict) and m.get("id") == model_id:
             return m
-    raise SystemExit(f"models.json 中未找到模型 id={model_id}")
+    raise SystemExit(f"packages/ocr/models.json 中未找到模型 id={model_id}")
 
 
 def rgba_to_chw(img: np.ndarray, mean, std, color_order: str) -> np.ndarray:

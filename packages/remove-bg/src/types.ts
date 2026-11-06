@@ -143,3 +143,6 @@ export function assertImageData(image: ImageDataLike): ImageDataLike {
   }
   return image;
 }
+
+/** Host-supplied runtime asset location. */
+export interface RemoveBgEngineOptions { wasmBaseURL: string }

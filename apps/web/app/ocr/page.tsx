@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import OcrShell from "@/components/ocr-shell";
 import SiteContent from "@/components/site-content";
+import { ToolPlaceholder } from "@/components/tool-placeholder";
 import { SITE_URL } from "@/lib/site";
 import { FAQ, OCR_DESCRIPTION, OCR_PATH, OCR_TITLE } from "@/lib/site/ocr";
+import { isToolEnabled } from "@/lib/site/tools";
 
 export const metadata: Metadata = {
   // absolute：保持迁移前的搜索结果标题，不拼站点后缀
   title: { absolute: OCR_TITLE },
   description: OCR_DESCRIPTION,
+  ...(!isToolEnabled("ocr") ? { robots: { index: false, follow: false } } : {}),
   alternates: { canonical: OCR_PATH },
   openGraph: {
     type: "website",
@@ -60,6 +63,10 @@ const jsonLd = {
 };
 
 export default function OcrPage() {
+  if (!isToolEnabled("ocr")) {
+    return <ToolPlaceholder toolId="ocr" />;
+  }
+
   return (
     <>
       <OcrShell />

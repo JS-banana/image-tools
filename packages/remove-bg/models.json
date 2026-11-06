@@ -1,0 +1,33 @@
+{
+  "models": [
+    {
+      "id": "ben2-base-fp16",
+      "name": "BEN2 Base FP16",
+      "label": "通用",
+      "recommended": true,
+      "revision": "dfdc25f421f",
+      "pipeline": "ben2-background-removal",
+      "files": {
+        "model": {
+          "url": "/models/ben2-base/model.onnx",
+          "sizeBytes": 219121675,
+          "sha256": "dfdc25f421f32a0d1268e0f2ff2153d340e8f1d52d3dd16f5dc33c1ce85cedf1",
+          "source": {
+            "repository": "onnx-community/BEN2-ONNX",
+            "revision": "c552aa82688edce09f0ac9d2e31ad53d9d629010",
+            "path": "onnx/model_fp16.onnx",
+            "sizeBytes": 219121675,
+            "sha256": "dfdc25f421f32a0d1268e0f2ff2153d340e8f1d52d3dd16f5dc33c1ce85cedf1"
+          }
+        }
+      },
+      "distribution": {
+        "license": "MIT",
+        "notices": [
+          "/models/ben2-base/LICENSE",
+          "/models/ben2-base/MODEL_SOURCE"
+        ]
+      }
+    }
+  ]
+}

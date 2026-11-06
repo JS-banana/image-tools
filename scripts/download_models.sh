@@ -66,6 +66,7 @@ sha256_file() {
 }
 
 download_atomic() {
+  local _url _dest _tmp _sz _digest
   _url="$1"
   _dest="$2"
   _tmp="${_dest}.part.$$"
@@ -87,6 +88,7 @@ download_atomic() {
 }
 
 verify_expected_file() {
+  local _label _dest _expected_size _expected_sha _actual_size _actual_sha
   _label="$1"
   _dest="$2"
   _expected_size="$3"
@@ -110,6 +112,7 @@ verify_expected_file() {
 }
 
 download_verified() {
+  local _url _label _dest _expected_size _expected_sha _tmp
   _url="$1"
   _label="$2"
   _dest="$3"
@@ -137,6 +140,7 @@ download_verified() {
 }
 
 ensure_verified_download() {
+  local _url _label _dest _expected_size _expected_sha
   _url="$1"
   _label="$2"
   _dest="$3"
@@ -158,6 +162,7 @@ ensure_verified_download() {
 }
 
 write_ben2_notices() {
+  local _dir _license _source _license_tmp _source_tmp
   _dir="$1"
   _license="$2"
   _source="$3"
@@ -165,29 +170,7 @@ write_ben2_notices() {
   _source_tmp="${_source}.tmp.$$"
   rm -f "$_license_tmp" "$_source_tmp"
 
-  cat > "$_license_tmp" <<'EOF'
-MIT License
-
-Copyright (c) 2025 Prama LLC
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-EOF
+  cp "$ROOT/scripts/licenses/BEN2-MIT.txt" "$_license_tmp"
 
   cat > "$_source_tmp" <<EOF
 BEN2 Base FP16 ONNX model source
@@ -252,27 +235,16 @@ EOF
 }
 
 skip_or_fetch() {
+  local _out_name _repo _remote _dest _metadata _revision _size _sha _url
   _out_name="$1"
   _repo="$2"
   _remote="$3"
   _dest="$4"
-  _url="${BASE}/${_repo}/resolve/main/${_remote}"
-  mkdir -p "$(dirname "$_dest")"
-  if [ -e "$_dest" ] && [ ! -f "$_dest" ]; then
-    echo "destination is not a regular file: $_dest" >&2
-    exit 1
-  fi
-  if [ -f "$_dest" ]; then
-    _sz=$(wc -c < "$_dest" | tr -d '[:space:]')
-    if [ "$_sz" = "0" ]; then
-      echo "existing file is empty: $_dest" >&2
-      exit 1
-    fi
-    _digest=$(sha256_file "$_dest")
-    echo "exists ${_out_name} sizeBytes=${_sz} sha256=${_digest} (skip, verified readable)"
-    return 0
-  fi
-  download_atomic "$_url" "$_dest"
+  # Every upstream file is pinned in the owning package catalog, including YAML.
+  _metadata="$(node "$ROOT/scripts/model-source.mjs" upstream "PaddlePaddle/${_repo}" "$_remote")"
+  read -r _revision _size _sha <<< "$_metadata"
+  _url="${BASE}/${_repo}/resolve/${_revision}/${_remote}"
+  ensure_verified_download "$_url" "$_out_name" "$_dest" "$_size" "$_sha"
 }
 
 case "$MODEL" in
@@ -323,3 +295,7 @@ case "$MODEL" in
     exit 2
     ;;
 esac
+
+if [[ "$MODEL" == ppocrv6-* ]]; then
+  node "$ROOT/scripts/model-source.mjs" ocr-notices "$MODEL"
+fi
